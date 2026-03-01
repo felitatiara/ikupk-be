@@ -12,6 +12,8 @@ import { Target } from './target/target.entity';
 import { TargetsModule } from './targets/targets.module';
 import { Unit } from './unit/unit.entity';
 import { UnitModule } from './unit/unit.module';
+import { Realisasi } from './realisasi/realisasi.entity';
+import { RealisasiModule } from './realisasi/realisasi.module';
 
 @Module({
   imports: [
@@ -29,7 +31,7 @@ import { UnitModule } from './unit/unit.module';
         username: configService.get('DATABASE_USERNAME') || 'postgres',
         password: configService.get('DATABASE_PASSWORD') || '',
         database: configService.get('DATABASE_NAME') || 'iku_pk',
-        entities: [User, Indikator, Target, Unit],
+        entities: [User, Indikator, Target, Unit, Realisasi],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',
       }),
@@ -39,6 +41,7 @@ import { UnitModule } from './unit/unit.module';
     IndikatorModule,
     TargetsModule,
     UnitModule,
+    RealisasiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
