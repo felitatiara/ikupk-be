@@ -22,4 +22,11 @@ export class Indikator {
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;
+
+  @Column({ name: 'updated_at', type: 'timestamp', default: () => 'now()', onUpdate: 'now()' })
+  updatedAt: Date;
+
+
+  @Column({ type: 'int', default: 1 })
+  level: number;
 }

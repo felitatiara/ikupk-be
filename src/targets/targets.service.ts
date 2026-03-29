@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
 import { Target } from '../target/target.entity';
 import { Unit } from '../unit/unit.entity';
+import { TargetUniversitas } from '../target_universitas/target_universitas.entity';
 
 export interface TargetRow {
   date: string;
@@ -32,6 +33,8 @@ export class TargetsService {
     private targetRepo: Repository<Target>,
     @InjectRepository(Unit)
     private unitRepo: Repository<Unit>,
+    @InjectRepository(TargetUniversitas)
+    private targetUnivRepo: Repository<TargetUniversitas>,
   ) {}
 
   async getAll(): Promise<TargetRow[]> {
@@ -125,6 +128,53 @@ export class TargetsService {
     const d = new Date(date);
     const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  async getIkuPk(unitId: number): Promise<any[]> {
+    // Start from target table, filtered by unit_id, with relations
+    const targets = await this.targetRepo.find({
+      where: { unitId },
+      relations: ['indikator', 'targetUniversitasRel'],
+    });
+
+    const result: any[] = [];
+
+    for (const t of targets) {
+      const indikator = t.indikator;
+      if (!indikator) continue;
+
+      // Use target_universitas_id FK to get target_universitas data
+      const tu = t.targetUniversitasRel as any;
+
+      const jenisLabel = indikator.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      result.push({
+        id: t.id,
+        indikatorId: t.indikatorId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: indikator.nama,
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        capaian: Number(t.targetAngka) || 0,
+        tenggat: t.tahun,
+        unitId: t.unitId,
+      });
+    }
+
+    return result;
+  }
+
+  async create(data: { indikatorId: number; unitId: number; tahun: string; targetAngka: number; targetUniversitas?: number | null }): Promise<Target> {
+    const target = this.targetRepo.create({
+      indikatorId: data.indikatorId,
+      unitId: data.unitId,
+      tahun: data.tahun,
+      targetAngka: data.targetAngka,
+      targetUniversitas: data.targetUniversitas ?? null,
+    });
+    return this.targetRepo.save(target);
   }
 }
 

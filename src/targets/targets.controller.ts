@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { TargetsService } from './targets.service';
 
 @Controller('targets')
@@ -18,5 +18,15 @@ export class TargetsController {
   @Get('admin/pku')
   getAdminPKU() {
     return this.targetsService.getTargetsForAdminPKU();
+  }
+
+  @Get('iku-pk')
+  getIkuPk(@Query('unitId', ParseIntPipe) unitId: number) {
+    return this.targetsService.getIkuPk(unitId);
+  }
+
+  @Post()
+  create(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetAngka: number; targetUniversitas?: number | null }) {
+    return this.targetsService.create(body);
   }
 }
