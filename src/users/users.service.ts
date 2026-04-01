@@ -98,4 +98,11 @@ export class UsersService {
   async remove(id: number): Promise<void> {
     await this.usersRepository.delete(id);
   }
+
+  async findByUnit(unitId: number): Promise<User[]> {
+    return this.usersRepository.find({
+      where: { unitId },
+      select: ['id', 'nama', 'email', 'role'],
+    });
+  }
 }

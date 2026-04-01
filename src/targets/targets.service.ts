@@ -130,10 +130,14 @@ export class TargetsService {
     return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
   }
 
-  async getIkuPk(unitId: number): Promise<any[]> {
-    // Start from target table, filtered by unit_id, with relations
+  async getIkuPk(unitId: number, userId?: number): Promise<any[]> {
+    // Start from target table, filtered by unit_id and status disposisi
+    const where: any = { unitId, status: 'disposisi' };
+    if (userId) {
+      where.assignedTo = userId;
+    }
     const targets = await this.targetRepo.find({
-      where: { unitId },
+      where,
       relations: ['indikator', 'targetUniversitasRel'],
     });
 
@@ -173,8 +177,45 @@ export class TargetsService {
       tahun: data.tahun,
       targetAngka: data.targetAngka,
       targetUniversitas: data.targetUniversitas ?? null,
+      status: 'pending_dekan',
     });
     return this.targetRepo.save(target);
+  }
+
+  async getForDekanValidasi(unitId: number): Promise<any[]> {
+    const targets = await this.targetRepo.find({
+      where: { unitId, status: 'pending_dekan' },
+      relations: ['indikator', 'targetUniversitasRel'],
+    });
+
+    return targets.map((t) => {
+      const indikator = t.indikator;
+      const tu = t.targetUniversitasRel as any;
+      const jenisLabel = indikator?.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      return {
+        id: t.id,
+        indikatorId: t.indikatorId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: indikator?.nama || '',
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        capaian: Number(t.targetAngka) || 0,
+        status: t.status,
+        createdAt: t.createdAt,
+      };
+    });
+  }
+
+  async updateStatus(id: number, status: string, assignedTo?: number): Promise<Target> {
+    const update: any = { status };
+    if (assignedTo !== undefined) {
+      update.assignedTo = assignedTo;
+    }
+    await this.targetRepo.update(id, update);
+    return this.targetRepo.findOneOrFail({ where: { id } });
   }
 }
 

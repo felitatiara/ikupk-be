@@ -46,6 +46,16 @@ export class Target {
   @JoinColumn({ name: 'created_by' })
   creator: User | null;
 
+  @Column({ name: 'status', type: 'varchar', length: 30, default: 'pending_dekan' })
+  status: string;
+
+  @Column({ name: 'assigned_to', type: 'int', nullable: true })
+  assignedTo: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_to' })
+  assignedUser: User | null;
+
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;
 }
