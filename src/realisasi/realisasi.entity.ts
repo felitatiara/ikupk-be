@@ -17,15 +17,18 @@ export class Realisasi {
   @Column({ name: 'realisasi_angka', type: 'numeric' })
   realisasiAngka: number;
 
-	@Column({ name: 'file_url', type: 'text' })
+	@Column({ name: 'file_url', type: 'text', nullable: true })
 	fileUrl: string;
 
-	@Column({ name: 'created_by', type: 'int' })
+	@Column({ name: 'created_by', type: 'int', nullable: true })
 	createdBy: number;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'created_by' })
   creator: User;
+
+  @Column({ name: 'status', type: 'varchar', length: 20, default: 'pending' })
+  status: string;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;

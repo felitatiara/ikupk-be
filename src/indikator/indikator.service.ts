@@ -31,4 +31,10 @@ export class IndikatorService {
   async remove(id: number): Promise<void> {
     await this.indikatorRepository.delete(id);
   }
+
+  async findSubindikator() {
+    return this.indikatorRepository.query(
+      "SELECT * FROM indikator WHERE array_length(string_to_array(kode, '.'), 1) = 3"
+    );
+  }
 }

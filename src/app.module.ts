@@ -14,6 +14,12 @@ import { Unit } from './unit/unit.entity';
 import { UnitModule } from './unit/unit.module';
 import { Realisasi } from './realisasi/realisasi.entity';
 import { RealisasiModule } from './realisasi/realisasi.module';
+import { BaselineData } from './baseline_data/baseline_data.entity';
+import { BaselineDataModule } from './baseline_data/baseline_data.module';
+import { Kriteria } from './kriteria/kriteria.entity';
+import { KriteriaModule } from './kriteria/kriteria.module';
+import { TargetUniversitas } from './target_universitas/target_universitas.entity';
+import { TargetUniversitasModule } from './target_universitas/target_universitas.module';
 
 @Module({
   imports: [
@@ -31,7 +37,7 @@ import { RealisasiModule } from './realisasi/realisasi.module';
         username: configService.get('DATABASE_USERNAME') || 'postgres',
         password: configService.get('DATABASE_PASSWORD') || '',
         database: configService.get('DATABASE_NAME') || 'iku_pk',
-        entities: [User, Indikator, Target, Unit, Realisasi],
+        entities: [User, Indikator, Target, Unit, Realisasi, BaselineData, Kriteria, TargetUniversitas],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',
       }),
@@ -42,6 +48,9 @@ import { RealisasiModule } from './realisasi/realisasi.module';
     TargetsModule,
     UnitModule,
     RealisasiModule,
+    BaselineDataModule,
+    KriteriaModule,
+    TargetUniversitasModule,
   ],
   controllers: [AppController],
   providers: [AppService],

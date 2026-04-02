@@ -6,6 +6,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   ParseIntPipe,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,6 +21,11 @@ export class UsersController {
   @Get()
   findAll() {
     return this.usersService.findAll();
+  }
+
+  @Get('by-unit')
+  findByUnit(@Query('unitId', ParseIntPipe) unitId: number) {
+    return this.usersService.findByUnit(unitId);
   }
 
   @Get(':id')

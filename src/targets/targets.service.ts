@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
 import { Target } from '../target/target.entity';
 import { Unit } from '../unit/unit.entity';
+import { TargetUniversitas } from '../target_universitas/target_universitas.entity';
 
 export interface TargetRow {
   date: string;
@@ -32,6 +33,8 @@ export class TargetsService {
     private targetRepo: Repository<Target>,
     @InjectRepository(Unit)
     private unitRepo: Repository<Unit>,
+    @InjectRepository(TargetUniversitas)
+    private targetUnivRepo: Repository<TargetUniversitas>,
   ) {}
 
   async getAll(): Promise<TargetRow[]> {
@@ -174,6 +177,94 @@ export class TargetsService {
     const d = new Date(date);
     const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  }
+
+  async getIkuPk(unitId: number, userId?: number): Promise<any[]> {
+    // Start from target table, filtered by unit_id and status disposisi
+    const where: any = { unitId, status: 'disposisi' };
+    if (userId) {
+      where.assignedTo = userId;
+    }
+    const targets = await this.targetRepo.find({
+      where,
+      relations: ['indikator', 'targetUniversitasRel'],
+    });
+
+    const result: any[] = [];
+
+    for (const t of targets) {
+      const indikator = t.indikator;
+      if (!indikator) continue;
+
+      // Use target_universitas_id FK to get target_universitas data
+      const tu = t.targetUniversitasRel as any;
+
+      const jenisLabel = indikator.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      result.push({
+        id: t.id,
+        indikatorId: t.indikatorId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: indikator.nama,
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        capaian: Number(t.targetAngka) || 0,
+        tenggat: t.tahun,
+        unitId: t.unitId,
+      });
+    }
+
+    return result;
+  }
+
+  async create(data: { indikatorId: number; unitId: number; tahun: string; targetAngka: number; targetUniversitas?: number | null }): Promise<Target> {
+    const target = this.targetRepo.create({
+      indikatorId: data.indikatorId,
+      unitId: data.unitId,
+      tahun: data.tahun,
+      targetAngka: data.targetAngka,
+      targetUniversitas: data.targetUniversitas ?? null,
+      status: 'pending_dekan',
+    });
+    return this.targetRepo.save(target);
+  }
+
+  async getForDekanValidasi(unitId: number): Promise<any[]> {
+    const targets = await this.targetRepo.find({
+      where: { unitId, status: 'pending_dekan' },
+      relations: ['indikator', 'targetUniversitasRel'],
+    });
+
+    return targets.map((t) => {
+      const indikator = t.indikator;
+      const tu = t.targetUniversitasRel as any;
+      const jenisLabel = indikator?.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      return {
+        id: t.id,
+        indikatorId: t.indikatorId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: indikator?.nama || '',
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        capaian: Number(t.targetAngka) || 0,
+        status: t.status,
+        createdAt: t.createdAt,
+      };
+    });
+  }
+
+  async updateStatus(id: number, status: string, assignedTo?: number): Promise<Target> {
+    const update: any = { status };
+    if (assignedTo !== undefined) {
+      update.assignedTo = assignedTo;
+    }
+    await this.targetRepo.update(id, update);
+    return this.targetRepo.findOneOrFail({ where: { id } });
   }
 }
 

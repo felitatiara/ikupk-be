@@ -2,19 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Realisasi } from './realisasi.entity';
-import { Target } from '../target/target.entity';
-import { User } from '../users/user.entity';
-
-export interface RealisasiDetail {
-  id: number;
-  targetId: number;
-  realisasiAngka: number;
-  fileUrl: string;
-  createdBy: number;
-  createdAt: Date;
-  target?: Target;
-  creator?: User;
-}
 
 @Injectable()
 export class RealisasiService {
@@ -25,14 +12,41 @@ export class RealisasiService {
 
   async findAll(): Promise<Realisasi[]> {
     return this.realisasiRepository.find({
-      relations: ['target', 'creator'],
+      relations: ['target', 'target.indikator', 'creator'],
     });
+  }
+
+  async getForValidasi(): Promise<any[]> {
+    const list = await this.realisasiRepository.find({
+      relations: ['target', 'target.indikator'],
+    });
+
+    return list.map((r) => {
+      const indikator = (r.target as any)?.indikator;
+      const jenis = indikator?.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      return {
+        id: r.id,
+        targetId: r.targetId,
+        tahun: (r.target as any)?.tahun || '',
+        target: jenis,
+        sasaranStrategis: indikator?.nama || '',
+        realisasiAngka: Number(r.realisasiAngka),
+        status: r.status,
+        createdAt: r.createdAt,
+      };
+    });
+  }
+
+  async updateStatus(id: number, status: string): Promise<Realisasi> {
+    await this.realisasiRepository.update(id, { status });
+    return this.realisasiRepository.findOneOrFail({ where: { id } });
   }
 
   async create(data: Partial<Realisasi>): Promise<Realisasi> {
     const realisasi = this.realisasiRepository.create(data);
     return this.realisasiRepository.save(realisasi);
   }
-
-  // Tambahkan method lain sesuai kebutuhan
 }
