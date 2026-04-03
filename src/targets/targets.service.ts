@@ -36,7 +36,56 @@ export class TargetsService {
 
   async getAll(): Promise<TargetRow[]> {
     const indiks = await this.indikatorRepo.find();
-    const rows: TargetRow[] = [];
+    let rows: TargetRow[] = [];
+
+    // If no indikators in database, return mock data for demo
+    if (indiks.length === 0) {
+      rows = [
+        {
+          date: '02 Januari 2025',
+          title: 'Perjanjian Kerja',
+          sasaran: 'Pemberitahuan kegiatan melalui web Fakultas',
+          capaian: '100%',
+        },
+        {
+          date: '02 Januari 2025',
+          title: 'Perjanjian Kerja',
+          sasaran: 'Laporan Rapat Tinjauan Manajemen (RTM)',
+          capaian: '100%',
+        },
+        {
+          date: '02 Januari 2025',
+          title: 'Perjanjian Kerja',
+          sasaran: 'Penyelesaian LPI',
+          capaian: '0%',
+        },
+        {
+          date: '31 Maret 2025',
+          title: 'Indikator Kinerja Utama',
+          sasaran: 'Meningkatnya kualitas lulusan pendidikan tinggi',
+          capaian: '0%',
+        },
+        {
+          date: '31 Maret 2025',
+          title: 'Indikator Kinerja Utama',
+          sasaran: 'Persentase dosen yang berkegatan tridharma',
+          capaian: '0%',
+        },
+        {
+          date: '31 September 2025',
+          title: 'Indikator Kinerja Utama',
+          sasaran: 'Mahasiswa menghubiskan paling tidak 20 SKS diluar kampus',
+          capaian: '0%',
+        },
+        {
+          date: '31 September 2025',
+          title: 'Indikator Kinerja Utama',
+          sasaran: 'Mahasiswa inbound diterima Pertukaran Mahasiswa Internasional',
+          capaian: '0%',
+        },
+      ];
+      return rows;
+    }
 
     for (const ind of indiks) {
       // fetch associated target rows
