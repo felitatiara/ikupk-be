@@ -109,7 +109,6 @@ export class TargetsService {
         indikatorJenis: indikator.jenis,
         parentId: indikator.parentId,
         indikatorTipe: indikator.parentId === null ? 'SASARAN STRATEGIS' : 'INDIKATOR KINERJA KEGIATAN',
-        tahun: indikator.tahun,
         targets: targets.map((t) => ({
           id: t.id,
           unitId: t.unitId,
