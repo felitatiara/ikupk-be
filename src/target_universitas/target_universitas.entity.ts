@@ -14,4 +14,7 @@ export class TargetUniversitas {
 
   @Column({ name: 'target_angka', type: 'numeric' })
   targetAngka: number;
+
+  @Column({ name: 'target_fakultas', type: 'numeric', nullable: true, default: 0 })
+  targetFakultas: number;
 }
