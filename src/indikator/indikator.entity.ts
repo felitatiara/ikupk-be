@@ -25,7 +25,7 @@ export class Indikator {
   @Column({ type: 'int', default: 1 })
   level: number;
 
-  @Column({ name: 'jenis_data', length: 50, nullable: true })
+  @Column({ name: 'jenis_data', type: 'varchar', length: 50, nullable: true })
   jenisData: string | null;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
