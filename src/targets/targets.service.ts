@@ -220,42 +220,277 @@ export class TargetsService {
   }
 
   async create(data: { indikatorId: number; unitId: number; tahun: string; targetAngka: number; targetUniversitas?: number | null }): Promise<Target> {
+    // Find root indikator to look up target_universitas record
+    const allIndikators = await this.indikatorRepo.find();
+    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+    let current = indikatorMap.get(data.indikatorId);
+    while (current && current.parentId) {
+      current = indikatorMap.get(current.parentId);
+    }
+    const rootId = current ? current.id : data.indikatorId;
+
+    // Look up target_universitas by root indikator + tahun
+    const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootId, tahun: data.tahun } });
+
     const target = this.targetRepo.create({
       indikatorId: data.indikatorId,
       unitId: data.unitId,
       tahun: data.tahun,
       targetAngka: data.targetAngka,
       targetUniversitas: data.targetUniversitas ?? null,
-      status: 'pending_dekan',
+      targetUniversitasId: tu ? tu.id : null,
+      status: 'pending_fakultas',
     });
     return this.targetRepo.save(target);
+  }
+
+  async getAdminTargetsGrouped(): Promise<any[]> {
+    const targets = await this.targetRepo.find({
+      relations: ['indikator', 'unit'],
+    });
+
+    if (targets.length === 0) return [];
+
+    const allIndikators = await this.indikatorRepo.find();
+    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+
+    const findRootIndikator = (indikatorId: number): number => {
+      let current = indikatorMap.get(indikatorId);
+      while (current && current.parentId) {
+        current = indikatorMap.get(current.parentId);
+      }
+      return current ? current.id : indikatorId;
+    };
+
+    const seen = new Map<string, boolean>();
+    const results: any[] = [];
+
+    for (const t of targets) {
+      const rootId = findRootIndikator(t.indikatorId);
+      const key = `${rootId}_${t.tahun}_${t.unitId}`;
+      if (seen.has(key)) continue;
+      seen.set(key, true);
+
+      const rootIndikator = indikatorMap.get(rootId);
+      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootId, tahun: t.tahun } });
+
+      const statusLabel = t.status === 'pending_fakultas' ? 'Menunggu Target Fakultas'
+        : t.status === 'pending_dekan' ? 'Menunggu Validasi Dekan'
+        : t.status === 'disposisi' ? 'Disposisi'
+        : t.status;
+
+      results.push({
+        id: tu ? tu.id : t.id,
+        indikatorId: rootId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: rootIndikator?.nama || '',
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        unitId: t.unitId,
+        unitNama: t.unit?.nama || '',
+        status: statusLabel,
+        createdAt: t.createdAt,
+      });
+    }
+
+    return results;
+  }
+
+  async getPendingFakultas(unitId: number): Promise<any[]> {
+    // Get all target_universitas entries where there are pending_fakultas targets for this unit
+    const targets = await this.targetRepo.find({
+      where: { unitId, status: 'pending_fakultas' },
+      relations: ['indikator'],
+    });
+
+    if (targets.length === 0) return [];
+
+    const allIndikators = await this.indikatorRepo.find();
+    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+
+    const findRootIndikator = (indikatorId: number): number => {
+      let current = indikatorMap.get(indikatorId);
+      while (current && current.parentId) {
+        current = indikatorMap.get(current.parentId);
+      }
+      return current ? current.id : indikatorId;
+    };
+
+    // Group by root indikator + tahun → one row per target_universitas
+    const seen = new Map<string, boolean>();
+    const results: any[] = [];
+
+    for (const t of targets) {
+      const rootId = findRootIndikator(t.indikatorId);
+      const key = `${rootId}_${t.tahun}`;
+      if (seen.has(key)) continue;
+      seen.set(key, true);
+
+      const rootIndikator = indikatorMap.get(rootId);
+      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU'
+        ? 'Indikator Kinerja Utama'
+        : 'Perjanjian Kerja';
+
+      const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootId, tahun: t.tahun } });
+
+      results.push({
+        id: tu ? tu.id : t.id,
+        indikatorId: rootId,
+        tahun: t.tahun,
+        target: jenisLabel,
+        sasaranStrategis: rootIndikator?.nama || '',
+        targetUniversitas: tu ? Number(tu.targetAngka) : 0,
+        targetFakultas: tu ? Number(tu.targetFakultas) || 0 : 0,
+        targetAngka: 0,
+        status: 'pending_fakultas',
+        createdAt: t.createdAt,
+      });
+    }
+
+    return results;
+  }
+
+  async getTargetItemsByRoot(unitId: number, rootIndikatorId: number, tahun: string): Promise<any[]> {
+    // First try to find target_universitas record for this root + tahun
+    const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootIndikatorId, tahun } });
+
+    let targets: Target[];
+    if (tu) {
+      // Use target_universitas_id FK for direct lookup
+      targets = await this.targetRepo.find({
+        where: { targetUniversitasId: tu.id, unitId },
+        relations: ['indikator'],
+      });
+    }
+
+    // Fallback: if no targets found via FK, use parent chain traversal
+    if (!tu || !targets! || targets!.length === 0) {
+      const allIndikators = await this.indikatorRepo.find();
+      const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+
+      const findRootIndikator = (id: number): number => {
+        let current = indikatorMap.get(id);
+        while (current && current.parentId) {
+          current = indikatorMap.get(current.parentId);
+        }
+        return current ? current.id : id;
+      };
+
+      const childIds = allIndikators.filter(i => findRootIndikator(i.id) === rootIndikatorId).map(i => i.id);
+
+      targets = await this.targetRepo.find({
+        where: childIds.map(cid => ({ indikatorId: cid, unitId, tahun })),
+        relations: ['indikator'],
+      });
+
+      // Backfill target_universitas_id for targets that don't have it
+      if (tu && targets.length > 0) {
+        for (const t of targets) {
+          if (!t.targetUniversitasId) {
+            t.targetUniversitasId = tu.id;
+            await this.targetRepo.save(t);
+          }
+        }
+      }
+    }
+
+    return targets.map(t => ({
+      targetId: t.id,
+      indikatorId: t.indikatorId,
+      indikatorNama: t.indikator?.nama || '',
+      indikatorKode: t.indikator?.kode || '',
+      targetAngka: Number(t.targetAngka) || 0,
+      status: t.status,
+    }));
+  }
+
+  async inputTargetFakultas(id: number, targetAngka: number): Promise<Target> {
+    await this.targetRepo.update(id, { targetAngka, status: 'pending_dekan' });
+    const target = await this.targetRepo.findOneOrFail({ where: { id }, relations: ['indikator'] });
+
+    await this.recalcTargetFakultas(target.indikatorId, target.tahun);
+
+    return target;
+  }
+
+  async submitTargetFakultas(items: { targetId: number; targetAngka: number }[]): Promise<void> {
+    for (const item of items) {
+      await this.targetRepo.update(item.targetId, { targetAngka: item.targetAngka });
+    }
+  }
+
+  private async recalcTargetFakultas(indikatorId: number, tahun: string): Promise<void> {
+    const allIndikators = await this.indikatorRepo.find();
+    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+    const findRootIndikator = (id: number): number => {
+      let current = indikatorMap.get(id);
+      while (current && current.parentId) {
+        current = indikatorMap.get(current.parentId);
+      }
+      return current ? current.id : id;
+    };
+
+    const rootId = findRootIndikator(indikatorId);
+    const childIds = allIndikators.filter(i => findRootIndikator(i.id) === rootId).map(i => i.id);
+
+    const relatedTargets = await this.targetRepo.find({
+      where: childIds.map(cid => ({ indikatorId: cid, tahun })),
+    });
+    const sum = relatedTargets.reduce((acc, t) => acc + (Number(t.targetAngka) || 0), 0);
+
+    const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootId, tahun } });
+    if (tu) {
+      tu.targetFakultas = sum;
+      await this.targetUnivRepo.save(tu);
+    }
   }
 
   async getForDekanValidasi(unitId: number): Promise<any[]> {
     const targets = await this.targetRepo.find({
       where: { unitId, status: 'pending_dekan' },
-      relations: ['indikator', 'targetUniversitasRel'],
+      relations: ['indikator'],
     });
 
-    return targets.map((t) => {
+    const allIndikators = await this.indikatorRepo.find();
+    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
+
+    const findRootIndikator = (indikatorId: number): number => {
+      let current = indikatorMap.get(indikatorId);
+      while (current && current.parentId) {
+        current = indikatorMap.get(current.parentId);
+      }
+      return current ? current.id : indikatorId;
+    };
+
+    const results: any[] = [];
+    for (const t of targets) {
       const indikator = t.indikator;
-      const tu = t.targetUniversitasRel as any;
       const jenisLabel = indikator?.jenis?.toUpperCase() === 'IKU'
         ? 'Indikator Kinerja Utama'
         : 'Perjanjian Kerja';
 
-      return {
+      const rootId = findRootIndikator(t.indikatorId);
+      const rootIndikator = indikatorMap.get(rootId);
+      const tu = await this.targetUnivRepo.findOne({ where: { indikatorId: rootId, tahun: t.tahun } });
+
+      results.push({
         id: t.id,
         indikatorId: t.indikatorId,
         tahun: t.tahun,
         target: jenisLabel,
-        sasaranStrategis: indikator?.nama || '',
+        sasaranStrategis: rootIndikator?.nama || indikator?.nama || '',
         targetUniversitas: tu ? Number(tu.targetAngka) : 0,
         capaian: Number(t.targetAngka) || 0,
         status: t.status,
         createdAt: t.createdAt,
-      };
-    });
+      });
+    }
+
+    return results;
   }
 
   async updateStatus(id: number, status: string, assignedTo?: number): Promise<Target> {

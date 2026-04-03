@@ -20,6 +20,11 @@ export class TargetsController {
     return this.targetsService.getTargetsForAdminPKU();
   }
 
+  @Get('admin/targets-grouped')
+  getAdminTargetsGrouped() {
+    return this.targetsService.getAdminTargetsGrouped();
+  }
+
   @Get('iku-pk')
   getIkuPk(@Query('unitId', ParseIntPipe) unitId: number, @Query('userId') userId?: string) {
     return this.targetsService.getIkuPk(unitId, userId ? Number(userId) : undefined);
@@ -28,6 +33,35 @@ export class TargetsController {
   @Get('dekan-validasi')
   getDekanValidasi(@Query('unitId', ParseIntPipe) unitId: number) {
     return this.targetsService.getForDekanValidasi(unitId);
+  }
+
+  @Get('pending-fakultas')
+  getPendingFakultas(@Query('unitId', ParseIntPipe) unitId: number) {
+    return this.targetsService.getPendingFakultas(unitId);
+  }
+
+  @Get('target-items')
+  getTargetItems(
+    @Query('unitId', ParseIntPipe) unitId: number,
+    @Query('rootIndikatorId', ParseIntPipe) rootIndikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.targetsService.getTargetItemsByRoot(unitId, rootIndikatorId, tahun);
+  }
+
+  @Patch(':id/target-fakultas')
+  inputTargetFakultas(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('targetAngka') targetAngka: number,
+  ) {
+    return this.targetsService.inputTargetFakultas(id, targetAngka);
+  }
+
+  @Post('submit-fakultas')
+  submitFakultas(
+    @Body() body: { items: { targetId: number; targetAngka: number }[] },
+  ) {
+    return this.targetsService.submitTargetFakultas(body.items);
   }
 
   @Patch(':id/status')
