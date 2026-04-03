@@ -52,14 +52,14 @@ export class TargetsController {
   @Patch(':id/target-fakultas')
   inputTargetFakultas(
     @Param('id', ParseIntPipe) id: number,
-    @Body('targetAngka') targetAngka: number,
+    @Body('targetUniversitas') targetUniversitas: number,
   ) {
-    return this.targetsService.inputTargetFakultas(id, targetAngka);
+    return this.targetsService.inputTargetFakultas(id, targetUniversitas);
   }
 
   @Post('submit-fakultas')
   submitFakultas(
-    @Body() body: { items: { targetId: number; targetAngka: number }[] },
+    @Body() body: { items: { targetId: number; targetUniversitas: number }[] },
   ) {
     return this.targetsService.submitTargetFakultas(body.items);
   }
@@ -74,7 +74,12 @@ export class TargetsController {
   }
 
   @Post()
-  create(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetAngka: number; targetUniversitas?: number | null }) {
+  create(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas?: number | null }) {
     return this.targetsService.create(body);
+  }
+
+  @Post('upsert-target-universitas')
+  upsertTargetUniversitas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas: number }) {
+    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.unitId, body.tahun, body.targetUniversitas);
   }
 }

@@ -2,7 +2,6 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 't
 import { Indikator } from '../indikator/indikator.entity';
 import { Unit } from '../unit/unit.entity';
 import { User } from '../users/user.entity';
-import { TargetUniversitas } from '../target_universitas/target_universitas.entity';
 
 @Entity('target')
 export class Target {
@@ -26,18 +25,8 @@ export class Target {
   @Column({ type: 'varchar', length: 4 })
   tahun: string;
 
-  @Column({ name: 'target_angka', type: 'numeric' })
-  targetAngka: number;
-
   @Column({ name: 'target_universitas', type: 'numeric', nullable: true })
   targetUniversitas: number | null;
-
-  @Column({ name: 'target_universitas_id', type: 'int', nullable: true })
-  targetUniversitasId: number | null;
-
-  @ManyToOne(() => TargetUniversitas, { nullable: true, onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'target_universitas_id' })
-  targetUniversitasRel: TargetUniversitas | null;
 
   @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy: number | null;
