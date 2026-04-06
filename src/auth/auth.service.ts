@@ -26,7 +26,15 @@ export class AuthService {
     const isPKUAdmin = user.role === 'admin' && user.unitId === 4;
     return {
       token: `dummy-token-for-user-${user.id}`,
-      user: { id: user.id, nama: user.nama, email: user.email, role: user.role, unitId: user.unitId },
+      user: {
+        id: user.id,
+        nama: user.nama,
+        email: user.email,
+        role: user.role,
+        unitId: user.unitId,
+        unitNama: user.unit?.nama ?? null,
+        unitJenis: user.unit?.jenis ?? null,
+      },
       isPKUAdmin
     };
   }
