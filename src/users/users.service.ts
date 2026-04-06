@@ -25,6 +25,10 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { email }, relations: ['unit'] });
   }
 
+  findByNip(nip: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { nip } });
+  }
+
   /**
    * Create a user.
    * Accepts either `name` or `nama` in the DTO and maps it to the entity's `name`.
@@ -32,6 +36,7 @@ export class UsersService {
   async create(dto: CreateUserDto): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
     const payload: Partial<User> = {
+      nip: dto.nip ?? null,
       nama: dto.nama,
       email: dto.email,
       password: hashed,
@@ -56,6 +61,10 @@ export class UsersService {
   async validateCredentials(identifier: string, password: string): Promise<{ user?: User; error?: string }> {
     // try by email
     let user = await this.findByEmail(identifier);
+    // try by NIP
+    if (!user) {
+      user = await this.findByNip(identifier);
+    }
     // try by id
     if (!user && !isNaN(Number(identifier))) {
       user = await this.findOne(Number(identifier));
@@ -85,6 +94,7 @@ export class UsersService {
    */
   async update(id: number, dto: UpdateUserDto): Promise<User | null> {
     const payload: Partial<User> = {};
+    if (dto.nip !== undefined) payload.nip = dto.nip ?? null;
     if (dto.nama) payload.nama = dto.nama;
     if (dto.email) payload.email = dto.email;
     if (dto.password) payload.password = await bcrypt.hash(dto.password, 10);
@@ -102,7 +112,7 @@ export class UsersService {
   async findByUnit(unitId: number): Promise<User[]> {
     return this.usersRepository.find({
       where: { unitId },
-      select: ['id', 'nama', 'email', 'role'],
+      select: ['id', 'nip', 'nama', 'email', 'role'],
     });
   }
 }

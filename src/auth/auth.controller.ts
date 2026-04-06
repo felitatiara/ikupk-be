@@ -12,7 +12,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() body: LoginDto) {
-    const { email, password } = body;
-    return this.authService.login(email, password);
+    const identifier = body.email; // bisa email atau NIP
+    return this.authService.login(identifier, body.password);
   }
 }
