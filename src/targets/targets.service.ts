@@ -430,5 +430,26 @@ export class TargetsService {
     target = this.targetRepo.create({ indikatorId, unitId, tahun, targetUniversitas, status: 'pending_fakultas' });
     return this.targetRepo.save(target);
   }
+
+  async disposisi(indikatorId: number, unitId: number, tahun: string, assignedTo: number): Promise<Target> {
+    let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
+    if (target) {
+      target.status = 'disposisi';
+      target.assignedTo = assignedTo;
+      return this.targetRepo.save(target);
+    }
+    target = this.targetRepo.create({ indikatorId, unitId, tahun, status: 'disposisi', assignedTo });
+    return this.targetRepo.save(target);
+  }
+
+  async upsertTargetFakultas(indikatorId: number, unitId: number, tahun: string, targetFakultas: number): Promise<Target> {
+    let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
+    if (target) {
+      target.targetFakultas = targetFakultas;
+      return this.targetRepo.save(target);
+    }
+    target = this.targetRepo.create({ indikatorId, unitId, tahun, targetFakultas, status: 'pending_fakultas' });
+    return this.targetRepo.save(target);
+  }
 }
 

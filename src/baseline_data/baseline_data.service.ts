@@ -18,8 +18,8 @@ export class BaselineDataService {
     return this.baselineDataRepository.find({ where: { unitId } });
   }
 
-  async findByIndikatorAndUnit(indikatorId: number, unitId: number): Promise<BaselineData[]> {
-    return this.baselineDataRepository.find({ where: { indikatorId, unitId } });
+  async findByJenisDataAndUnit(jenisData: string, unitId: number): Promise<BaselineData[]> {
+    return this.baselineDataRepository.find({ where: { jenisData, unitId } });
   }
 
   async create(data: Partial<BaselineData>): Promise<BaselineData> {

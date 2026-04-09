@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { User } from './user.entity';
+import { Unit } from '../unit/unit.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
@@ -11,6 +12,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(Unit)
+    private unitRepository: Repository<Unit>,
   ) {}
 
   findAll(): Promise<User[]> {
@@ -26,7 +29,7 @@ export class UsersService {
   }
 
   findByNip(nip: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { nip } });
+    return this.usersRepository.findOne({ where: { nip }, relations: ['unit'] });
   }
 
   /**
@@ -110,8 +113,13 @@ export class UsersService {
   }
 
   async findByUnit(unitId: number): Promise<User[]> {
+    // Get child units (e.g. Prodi under Fakultas)
+    const childUnits = await this.unitRepository.find({
+      where: { parentId: unitId },
+    });
+    const unitIds = [unitId, ...childUnits.map((u) => u.id)];
     return this.usersRepository.find({
-      where: { unitId },
+      where: { unitId: In(unitIds) },
       select: ['id', 'nip', 'nama', 'email', 'role'],
     });
   }

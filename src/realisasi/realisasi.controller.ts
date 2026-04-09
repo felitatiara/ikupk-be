@@ -27,4 +27,18 @@ export class RealisasiController {
   create(@Body() body: { targetId: number; realisasiAngka: number; fileUrl?: string; createdBy?: number }) {
     return this.realisasiService.create(body);
   }
+
+  @Post('from-file')
+  submitFromFile(
+    @Body() body: {
+      indikatorId: number;
+      unitId: number;
+      tahun: string;
+      periode: string;
+      fileCount: number;
+      userId: number;
+    },
+  ) {
+    return this.realisasiService.submitFromFile(body);
+  }
 }

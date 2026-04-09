@@ -8,11 +8,11 @@ export class BaselineDataController {
 
   @Get()
   async findAll(
-    @Query('indikatorId') indikatorId?: string,
+    @Query('jenisData') jenisData?: string,
     @Query('unitId') unitId?: string,
   ): Promise<BaselineData[]> {
-    if (indikatorId && unitId) {
-      return this.baselineDataService.findByIndikatorAndUnit(Number(indikatorId), Number(unitId));
+    if (jenisData && unitId) {
+      return this.baselineDataService.findByJenisDataAndUnit(jenisData, Number(unitId));
     }
     return this.baselineDataService.findAll();
   }

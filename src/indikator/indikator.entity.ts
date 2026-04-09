@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
+import { Unit } from '../unit/unit.entity';
 
 @Entity('indikator')
 @Unique(['jenis', 'kode'])
@@ -21,6 +22,13 @@ export class Indikator {
   @ManyToOne(() => Indikator, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'parent_id' })
   parent: Indikator;
+
+  @Column({ name: 'unit_id', type: 'int', nullable: true })
+  unitId: number | null;
+
+  @ManyToOne(() => Unit, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'unit_id' })
+  unit: Unit;
 
   @Column({ type: 'int', default: 1 })
   level: number;

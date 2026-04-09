@@ -64,6 +64,16 @@ export class TargetsController {
     return this.targetsService.submitTargetFakultas(body.items);
   }
 
+  @Post('disposisi')
+  disposisi(
+    @Body('indikatorId') indikatorId: number,
+    @Body('unitId') unitId: number,
+    @Body('tahun') tahun: string,
+    @Body('assignedTo') assignedTo: number,
+  ) {
+    return this.targetsService.disposisi(indikatorId, unitId, tahun, assignedTo);
+  }
+
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -81,5 +91,10 @@ export class TargetsController {
   @Post('upsert-target-universitas')
   upsertTargetUniversitas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas: number }) {
     return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.unitId, body.tahun, body.targetUniversitas);
+  }
+
+  @Post('upsert-target-fakultas')
+  upsertTargetFakultas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetFakultas: number }) {
+    return this.targetsService.upsertTargetFakultas(body.indikatorId, body.unitId, body.tahun, body.targetFakultas);
   }
 }

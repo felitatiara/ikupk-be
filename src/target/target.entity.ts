@@ -28,6 +28,9 @@ export class Target {
   @Column({ name: 'target_universitas', type: 'numeric', nullable: true })
   targetUniversitas: number | null;
 
+  @Column({ name: 'target_fakultas', type: 'numeric', nullable: true })
+  targetFakultas: number | null;
+
   @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy: number | null;
 

@@ -16,8 +16,18 @@ export class IndikatorController {
   }
 
   @Get('grouped')
-  findGrouped(@Query('jenis') jenis: string, @Query('tahun') tahun: string) {
-    return this.indikatorService.findGrouped(jenis, tahun);
+  findGrouped(@Query('jenis') jenis: string, @Query('tahun') tahun: string, @Query('unitId') unitId?: string) {
+    return this.indikatorService.findGrouped(jenis, tahun, unitId ? Number(unitId) : undefined);
+  }
+
+  @Get('grouped-user')
+  findGroupedForUser(
+    @Query('jenis') jenis: string,
+    @Query('tahun') tahun: string,
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('unitId', ParseIntPipe) unitId: number,
+  ) {
+    return this.indikatorService.findGroupedForUser(jenis, tahun, userId, unitId);
   }
 
   @Post()
