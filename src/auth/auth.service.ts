@@ -5,13 +5,14 @@ import { UsersService } from '../users/users.service';
 export class AuthService {
   constructor(private usersService: UsersService) {}
 
-  async validateUser(email: string, password: string) {
-    // Use UsersService's credential validation (handles bcrypt)
-    return this.usersService.validateCredentials(email, password);
+
+  async validateUser(nip: string, password: string) {
+    // Validasi hanya berdasarkan NIP
+    return this.usersService.validateCredentials(nip, password);
   }
 
-  async login(email: string, password: string) {
-    const result = await this.validateUser(email, password);
+  async login(nip: string, password: string) {
+    const result = await this.validateUser(nip, password);
     if (result.error === 'not_found') {
       throw new UnauthorizedException('User not found');
     }

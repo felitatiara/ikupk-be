@@ -6,48 +6,48 @@ import { User } from '../users/user.entity';
 @Entity('target')
 export class Target {
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ name: 'indikator_id', type: 'int' })
-  indikatorId: number;
+  indikatorId!: number;
 
   @ManyToOne(() => Indikator, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'indikator_id' })
-  indikator: Indikator;
+  indikator!: Indikator;
 
   @Column({ name: 'unit_id', type: 'int' })
-  unitId: number;
+  unitId!: number;
 
   @ManyToOne(() => Unit, (unit) => unit.targets, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'unit_id' })
-  unit: Unit;
+  unit!: Unit;
 
   @Column({ type: 'varchar', length: 4 })
-  tahun: string;
+  tahun!: string;
 
   @Column({ name: 'target_universitas', type: 'numeric', nullable: true })
-  targetUniversitas: number | null;
+  targetUniversitas!: number | null;
 
   @Column({ name: 'target_fakultas', type: 'numeric', nullable: true })
-  targetFakultas: number | null;
+  targetFakultas!: number | null;
 
   @Column({ name: 'created_by', type: 'int', nullable: true })
-  createdBy: number | null;
+  createdBy!: number | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'created_by' })
-  creator: User | null;
+  creator!: User | null;
 
   @Column({ name: 'status', type: 'varchar', length: 30, default: 'pending_dekan' })
-  status: string;
+  status!: string;
 
   @Column({ name: 'assigned_to', type: 'int', nullable: true })
-  assignedTo: number | null;
+  assignedTo!: number | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assigned_to' })
-  assignedUser: User | null;
+  assignedUser!: User | null;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
-  createdAt: Date;
+  createdAt!: Date;
 }

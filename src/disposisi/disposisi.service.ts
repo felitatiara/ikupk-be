@@ -1,13 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Disposisi } from './disposisi.entity';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class DisposisiService {
   constructor(
     @InjectRepository(Disposisi)
     private disposisiRepo: Repository<Disposisi>,
+    private usersService: UsersService,
   ) {}
 
   async findByIndikator(indikatorId: number, unitId: number, tahun: string, disposedBy?: number | null): Promise<Disposisi[]> {
@@ -29,6 +31,13 @@ export class DisposisiService {
     items: { assignedTo: number; jumlah: number }[],
     disposedBy?: number | null,
   ): Promise<Disposisi[]> {
+    // Cek jika disposedBy diisi, pastikan usernya role pimpinan
+    if (disposedBy) {
+      const user = await this.usersService.findOne(disposedBy);
+      if (!user || user.role.toLowerCase() !== 'pimpinan') {
+        throw new ForbiddenException('Hanya user dengan role pimpinan yang dapat melakukan disposisi');
+      }
+    }
     // Remove existing disposisi for this indikator+unit+tahun+disposedBy
     const deleteWhere: any = { indikatorId, unitId, tahun };
     if (disposedBy !== undefined && disposedBy !== null) {

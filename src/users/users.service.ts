@@ -39,7 +39,7 @@ export class UsersService {
   async create(dto: CreateUserDto): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
     const payload: Partial<User> = {
-      nip: dto.nip ?? null,
+      nip: dto.nip,
       nama: dto.nama,
       email: dto.email,
       password: hashed,

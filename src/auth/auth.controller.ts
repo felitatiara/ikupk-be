@@ -2,7 +2,7 @@ import { Controller, Post, Body } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
 class LoginDto {
-  email: string;
+  nip: string;
   password: string;
 }
 
@@ -12,7 +12,6 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() body: LoginDto) {
-    const identifier = body.email; // bisa email atau NIP
-    return this.authService.login(identifier, body.password);
+    return this.authService.login(body.nip, body.password);
   }
 }
