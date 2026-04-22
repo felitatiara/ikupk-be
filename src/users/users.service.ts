@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { User } from './user.entity';
 import { Unit } from '../unit/unit.entity';
+import { UserRelation } from './user_relation.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
@@ -14,6 +15,8 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(Unit)
     private unitRepository: Repository<Unit>,
+    @InjectRepository(UserRelation)
+    private userRelationRepo: Repository<UserRelation>,
   ) {}
 
   findAll(): Promise<User[]> {
@@ -34,7 +37,7 @@ export class UsersService {
 
   /**
    * Create a user.
-   * Accepts either `name` or `nama` in the DTO and maps it to the entity's `name`.
+   * Also creates a relationship in user_relations if atasanId is provided.
    */
   async create(dto: CreateUserDto): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
@@ -44,11 +47,22 @@ export class UsersService {
       email: dto.email,
       password: hashed,
       role: dto.role,
+      jenis: dto.jenis || "Dosen",
       unitId: dto.unitId ?? null,
     };
 
     const user = this.usersRepository.create(payload);
-    return this.usersRepository.save(user);
+    const savedUser = await this.usersRepository.save(user);
+
+    if (dto.atasanId) {
+      const relation = this.userRelationRepo.create({
+        userId: savedUser.id,
+        parentId: dto.atasanId,
+      });
+      await this.userRelationRepo.save(relation);
+    }
+
+    return savedUser;
   }
 
   async findByName(name: string): Promise<User | null> {
@@ -93,7 +107,8 @@ export class UsersService {
   }
 
   /**
-   * Update user by id. Maps `nama` -> `name` if provided.
+   * Update user by id.
+   * Also updates relationship in user_relations if atasanId is provided.
    */
   async update(id: number, dto: UpdateUserDto): Promise<User | null> {
     const payload: Partial<User> = {};
@@ -102,9 +117,25 @@ export class UsersService {
     if (dto.email) payload.email = dto.email;
     if (dto.password) payload.password = await bcrypt.hash(dto.password, 10);
     if (dto.role !== undefined) payload.role = dto.role;
+    if (dto.jenis !== undefined) payload.jenis = dto.jenis;
     if (dto.unitId !== undefined) payload.unitId = dto.unitId ?? null;
 
     await this.usersRepository.update(id, payload);
+
+    if (dto.atasanId !== undefined) {
+      // Remove old relations
+      await this.userRelationRepo.delete({ userId: id });
+      
+      if (dto.atasanId !== null) {
+        // Add new relation
+        const relation = this.userRelationRepo.create({
+          userId: id,
+          parentId: dto.atasanId,
+        });
+        await this.userRelationRepo.save(relation);
+      }
+    }
+
     return (await this.findOne(id)) as User | null;
   }
 
@@ -122,5 +153,33 @@ export class UsersService {
       where: { unitId: In(unitIds) },
       select: ['id', 'nip', 'nama', 'email', 'role'],
     });
+  }
+
+  /**
+   * Mengambil daftar user yang berada DI BAWAH userId dalam hierarki user_relations.
+   * Artinya: ambil semua user_relations di mana parent_id = userId,
+   * lalu kembalikan data user-nya.
+   */
+  async findRelatedUsersFor(userId: number): Promise<User[]> {
+    const relations = await this.userRelationRepo.find({
+      where: { parentId: userId },
+      relations: ['user'],
+    });
+    const userIds = relations.map((r) => r.user?.id).filter(Boolean) as number[];
+    if (userIds.length === 0) return [];
+    return this.usersRepository.find({
+      where: { id: In(userIds) },
+      select: ['id', 'nip', 'nama', 'email', 'role'],
+    });
+  }
+
+  /**
+   * Mengecek apakah user ini memiliki bawahan di user_relations.
+   */
+  async hasRelatedUsers(userId: number): Promise<boolean> {
+    const count = await this.userRelationRepo.count({
+      where: { parentId: userId },
+    });
+    return count > 0;
   }
 }

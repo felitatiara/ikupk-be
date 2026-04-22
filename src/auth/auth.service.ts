@@ -32,7 +32,7 @@ export class AuthService {
         nip: user.nip,
         nama: user.nama,
         email: user.email,
-        role: user.role,
+        role: user.role?.toLowerCase(),
         unitId: user.unitId,
         unitNama: user.unit?.nama ?? null,
         unitJenis: user.unit?.jenis ?? null,

@@ -30,15 +30,6 @@ async function seedUnits() {
   });
   await unitRepo.save(fakultas);
 
-  // Insert Biro PKU
-  const biro = unitRepo.create({
-    id: 6,
-    nama: 'Biro PKU',
-    jenis: 'Biro',
-    parentId: null,
-  });
-  await unitRepo.save(biro);
-
   // Insert Prodi (anak dari Fakultas Ilmu Komputer)
   const prodis = [
     { id: 2, nama: 'S1 Sistem Informasi' },

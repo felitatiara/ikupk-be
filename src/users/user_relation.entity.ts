@@ -7,11 +7,17 @@ export class UserRelation {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @Column({ name: 'user_id' })
+  userId: number;
+
+  @Column({ name: 'parent_id' })
+  parentId: number;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'parent_id' })
   parent: User;
 }

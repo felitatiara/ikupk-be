@@ -23,6 +23,14 @@ export class CreateUserDto {
   role: string;
 
   @IsOptional()
+  @IsString()
+  jenis?: string;
+
+  @IsOptional()
   @IsInt()
   unitId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  atasanId?: number | null;
 }

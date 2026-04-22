@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/user.entity';
+import { UserRelation } from './users/user_relation.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IndikatorModule } from './indikator/indikator.module';
@@ -37,7 +38,7 @@ import { DisposisiModule } from './disposisi/disposisi.module';
         username: configService.get('DATABASE_USERNAME') || 'postgres',
         password: configService.get('DATABASE_PASSWORD') || '',
         database: configService.get('DATABASE_NAME') || 'iku_pk',
-        entities: [User, Indikator, Target, Unit, Realisasi, BaselineData, Kriteria, Disposisi],
+        entities: [User, UserRelation, Indikator, Target, Unit, Realisasi, BaselineData, Kriteria, Disposisi],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',
       }),

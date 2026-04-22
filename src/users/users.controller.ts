@@ -28,6 +28,17 @@ export class UsersController {
     return this.usersService.findByUnit(unitId);
   }
 
+  @Get('related')
+  findRelatedUsers(@Query('userId', ParseIntPipe) userId: number) {
+    return this.usersService.findRelatedUsersFor(userId);
+  }
+
+  @Get('has-related')
+  async hasRelatedUsers(@Query('userId', ParseIntPipe) userId: number) {
+    const has = await this.usersService.hasRelatedUsers(userId);
+    return { hasRelated: has };
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);

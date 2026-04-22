@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
 import { Target } from '../target/target.entity';
 import { Unit } from '../unit/unit.entity';
+import { User } from '../users/user.entity';
 
 export interface TargetRow {
   date: string;
@@ -32,6 +33,8 @@ export class TargetsService {
     private targetRepo: Repository<Target>,
     @InjectRepository(Unit)
     private unitRepo: Repository<Unit>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
   ) {}
 
   async getAll(): Promise<TargetRow[]> {
@@ -135,7 +138,7 @@ export class TargetsService {
     }));
   }
 
-  async getTargetsForAdminPKU(): Promise<any[]> {
+  async getTargetsForAdminFIK(): Promise<any[]> {
     // Fetch semua indikator
     const indikators = await this.indikatorRepo.find();
 
@@ -176,11 +179,22 @@ export class TargetsService {
   }
 
   async getIkuPk(unitId: number, userId?: number): Promise<any[]> {
-    // Start from target table, filtered by unit_id and status disposisi
     const where: any = { unitId, status: 'disposisi' };
+    
     if (userId) {
-      where.assignedTo = userId;
+      // Fetch user to check role
+      const user = await this.userRepo.findOne({ where: { id: userId } });
+      const leaderRoles = ['pimpinan', 'Wadek1', 'Wadek2', 'Wadek3'];
+      
+      if (user && leaderRoles.includes(user.role)) {
+        // Leaders see everything in their unit that is 'disposisi'
+        // No additional filter needed beyond unitId and status
+      } else {
+        // Others only see what is specifically assigned to them
+        where.assignedTo = userId;
+      }
     }
+
     const targets = await this.targetRepo.find({
       where,
       relations: ['indikator'],
@@ -258,7 +272,7 @@ export class TargetsService {
       const tu = t.targetUniversitas;
 
       const statusLabel = t.status === 'pending_fakultas' ? 'Menunggu Target Fakultas'
-        : t.status === 'pending_dekan' ? 'Menunggu Validasi Dekan'
+        : t.status === 'pending_pimpinan' ? 'Menunggu Validasi Pimpinan'
         : t.status === 'disposisi' ? 'Disposisi'
         : t.status;
 
@@ -359,7 +373,7 @@ export class TargetsService {
   }
 
   async inputTargetFakultas(id: number, targetUniversitas: number): Promise<Target> {
-    await this.targetRepo.update(id, { targetUniversitas, status: 'pending_dekan' });
+    await this.targetRepo.update(id, { targetUniversitas, status: 'pending_pimpinan' });
     return this.targetRepo.findOneOrFail({ where: { id }, relations: ['indikator'] });
   }
 
@@ -369,9 +383,9 @@ export class TargetsService {
     }
   }
 
-  async getForDekanValidasi(unitId: number): Promise<any[]> {
+  async getForPimpinanValidasi(unitId: number): Promise<any[]> {
     const targets = await this.targetRepo.find({
-      where: { unitId, status: 'pending_dekan' },
+      where: { unitId, status: 'pending_pimpinan' },
       relations: ['indikator'],
     });
 
@@ -421,13 +435,14 @@ export class TargetsService {
     return this.targetRepo.findOneOrFail({ where: { id } });
   }
 
-  async upsertTargetUniversitas(indikatorId: number, unitId: number, tahun: string, targetUniversitas: number): Promise<Target> {
+  async upsertTargetUniversitas(indikatorId: number, unitId: number, tahun: string, targetUniversitas: number, tenggat?: string): Promise<Target> {
     let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
     if (target) {
       target.targetUniversitas = targetUniversitas;
+      if (tenggat !== undefined) target.tenggat = tenggat;
       return this.targetRepo.save(target);
     }
-    target = this.targetRepo.create({ indikatorId, unitId, tahun, targetUniversitas, status: 'pending_fakultas' });
+    target = this.targetRepo.create({ indikatorId, unitId, tahun, targetUniversitas, tenggat: tenggat ?? null, status: 'pending_fakultas' });
     return this.targetRepo.save(target);
   }
 

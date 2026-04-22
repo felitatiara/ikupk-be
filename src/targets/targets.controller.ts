@@ -15,9 +15,14 @@ export class TargetsController {
     return this.targetsService.getTargetDetailByUnit(unitId);
   }
 
-  @Get('admin/pku')
-  getAdminPKU() {
-    return this.targetsService.getTargetsForAdminPKU();
+  @Get('admin/fik')
+  getAdminFIK() {
+    return this.targetsService.getTargetsForAdminFIK();
+  }
+
+  @Get('admin')
+  getAdmin() {
+    return this.targetsService.getTargetsForAdminFIK();
   }
 
   @Get('admin/targets-grouped')
@@ -30,9 +35,9 @@ export class TargetsController {
     return this.targetsService.getIkuPk(unitId, userId ? Number(userId) : undefined);
   }
 
-  @Get('dekan-validasi')
-  getDekanValidasi(@Query('unitId', ParseIntPipe) unitId: number) {
-    return this.targetsService.getForDekanValidasi(unitId);
+  @Get('pimpinan-validasi')
+  getPimpinanValidasi(@Query('unitId', ParseIntPipe) unitId: number) {
+    return this.targetsService.getForPimpinanValidasi(unitId);
   }
 
   @Get('pending-fakultas')
@@ -89,8 +94,8 @@ export class TargetsController {
   }
 
   @Post('upsert-target-universitas')
-  upsertTargetUniversitas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas: number }) {
-    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.unitId, body.tahun, body.targetUniversitas);
+  upsertTargetUniversitas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas: number; tenggat?: string }) {
+    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.unitId, body.tahun, body.targetUniversitas, body.tenggat);
   }
 
   @Post('upsert-target-fakultas')

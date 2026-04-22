@@ -22,6 +22,10 @@ export class BaselineDataService {
     return this.baselineDataRepository.find({ where: { jenisData, unitId } });
   }
 
+  async findByJenisDataAndTahun(jenisData: string, tahun: string): Promise<BaselineData | null> {
+    return this.baselineDataRepository.findOne({ where: { jenisData, unitId: 1, tahun } });
+  }
+
   async create(data: Partial<BaselineData>): Promise<BaselineData> {
     const baseline = this.baselineDataRepository.create(data);
     return this.baselineDataRepository.save(baseline);

@@ -16,6 +16,17 @@ export class DisposisiController {
     return this.disposisiService.findByIndikator(indikatorId, unitId, tahun, db);
   }
 
+  @Get('received-jumlah')
+  async getReceivedJumlah(
+    @Query('assignedTo', ParseIntPipe) assignedTo: number,
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('unitId', ParseIntPipe) unitId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    const jumlah = await this.disposisiService.getReceivedJumlah(assignedTo, indikatorId, unitId, tahun);
+    return { jumlah };
+  }
+
   @Post()
   upsert(
     @Body('indikatorId') indikatorId: number,

@@ -10,7 +10,11 @@ export class BaselineDataController {
   async findAll(
     @Query('jenisData') jenisData?: string,
     @Query('unitId') unitId?: string,
-  ): Promise<BaselineData[]> {
+    @Query('tahun') tahun?: string,
+  ): Promise<BaselineData[] | BaselineData | null> {
+    if (jenisData && tahun) {
+      return this.baselineDataService.findByJenisDataAndTahun(jenisData, tahun);
+    }
     if (jenisData && unitId) {
       return this.baselineDataService.findByJenisDataAndUnit(jenisData, Number(unitId));
     }

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Query, Param, Body, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Query, Param, Body, ParseIntPipe, HttpCode } from '@nestjs/common';
 import { IndikatorService } from './indikator.service';
 
 @Controller('indikator')
@@ -20,6 +20,15 @@ export class IndikatorController {
     return this.indikatorService.findGrouped(jenis, tahun, unitId ? Number(unitId) : undefined);
   }
 
+  @Get('pengajuan-grouped')
+  findPengajuanGrouped(
+    @Query('jenis') jenis: string,
+    @Query('tahun') tahun: string,
+    @Query('unitId', ParseIntPipe) unitId: number,
+  ) {
+    return this.indikatorService.findPengajuanGrouped(jenis, tahun, unitId);
+  }
+
   @Get('grouped-user')
   findGroupedForUser(
     @Query('jenis') jenis: string,
@@ -31,13 +40,19 @@ export class IndikatorController {
   }
 
   @Post()
-  create(@Body() data: { jenis: string; kode: string; nama: string; level: number; parentId?: number | null }) {
+  create(@Body() data: { jenis: string; kode: string; nama: string; level: number; parentId?: number | null; jenisData?: string | null }) {
     return this.indikatorService.create(data);
   }
 
   @Put(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() data: { jenis?: string; kode?: string; nama?: string; level?: number; parentId?: number | null }) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() data: { jenis?: string; kode?: string; nama?: string; level?: number; parentId?: number | null; jenisData?: string | null }) {
     return this.indikatorService.update(id, data);
+  }
+
+  @Delete('all')
+  @HttpCode(204)
+  removeAll() {
+    return this.indikatorService.removeAll();
   }
 
   @Delete(':id')

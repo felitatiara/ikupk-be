@@ -38,7 +38,7 @@ export class Target {
   @JoinColumn({ name: 'created_by' })
   creator!: User | null;
 
-  @Column({ name: 'status', type: 'varchar', length: 30, default: 'pending_dekan' })
+  @Column({ name: 'status', type: 'varchar', length: 30, default: 'pending_pimpinan' })
   status!: string;
 
   @Column({ name: 'assigned_to', type: 'int', nullable: true })
@@ -47,6 +47,9 @@ export class Target {
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assigned_to' })
   assignedUser!: User | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  tenggat!: string | null;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt!: Date;

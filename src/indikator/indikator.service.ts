@@ -41,6 +41,10 @@ export class IndikatorService {
     await this.indikatorRepository.delete(id);
   }
 
+  async removeAll(): Promise<void> {
+    await this.indikatorRepository.query('TRUNCATE TABLE indikator CASCADE');
+  }
+
   async findSubindikator() {
     return this.indikatorRepository.query(
       "SELECT * FROM indikator WHERE array_length(string_to_array(kode, '.'), 1) = 3"
@@ -101,10 +105,11 @@ export class IndikatorService {
         }
         // Always fetch baseline (not dependent on unitId)
         baselineJumlahSub = await this.findBaselineForIndikator(l1.id, tahun, all);
-        // Also check target universitas without unitId filter (set by Biro)
-        if (targetUniversitasSub === null) {
-          const subTargetUniv = await this.targetRepo.findOne({ where: { indikatorId: l1.id, tahun } });
-          targetUniversitasSub = subTargetUniv ? Number(subTargetUniv.targetUniversitas) : null;
+        // Also check target universitas and fakultas without unitId filter (fallback)
+        if (targetUniversitasSub === null || targetFakultas === null) {
+          const subTargetAny = await this.targetRepo.findOne({ where: { indikatorId: l1.id, tahun } });
+          if (targetUniversitasSub === null) targetUniversitasSub = subTargetAny ? Number(subTargetAny.targetUniversitas) : null;
+          if (targetFakultas === null) targetFakultas = subTargetAny ? Number(subTargetAny.targetFakultas) : null;
         }
 
         subIndikators.push({
@@ -118,21 +123,43 @@ export class IndikatorService {
           targetUniversitas: targetUniversitasSub,
           baselineJumlah: baselineJumlahSub,
           children: await Promise.all(level2.map(async (l2) => {
+            // Fetch targetUniversitas + tenggat dari record unitId=1 (superadmin)
+            const univTarget = await this.targetRepo.findOne({ where: { indikatorId: l2.id, unitId: 1, tahun } });
+            const childTargetUniversitas: number | null = univTarget ? Number(univTarget.targetUniversitas) : null;
+            const childTenggat: string | null = univTarget ? univTarget.tenggat : null;
+            const childTargetUniversitasId: number | null = univTarget ? univTarget.id : null;
+
+            // Fetch targetFakultas dari unit admin ybs
             let childTargetFakultas: number | null = null;
-            let childBaselineJumlah: number | null = null;
-            if (unitId) {
+            if (unitId && unitId !== 1) {
               const childTarget = await this.targetRepo.findOne({ where: { indikatorId: l2.id, unitId, tahun } });
               childTargetFakultas = childTarget ? Number(childTarget.targetFakultas) : null;
+            } else if (unitId === 1) {
+              childTargetFakultas = univTarget ? Number(univTarget.targetFakultas) : null;
             }
-            // Always fetch baseline
-            childBaselineJumlah = await this.findBaselineForIndikator(l2.id, tahun, all);
-            return { id: l2.id, kode: l2.kode, nama: l2.nama, level: l2.level, targetFakultas: childTargetFakultas, baselineJumlah: childBaselineJumlah };
+
+            const childBaselineJumlah = await this.findBaselineForIndikator(l2.id, tahun, all);
+            return {
+              id: l2.id,
+              kode: l2.kode,
+              nama: l2.nama,
+              level: l2.level,
+              targetFakultas: childTargetFakultas,
+              targetUniversitas: childTargetUniversitas,
+              targetUniversitasId: childTargetUniversitasId,
+              tenggat: childTenggat,
+              baselineJumlah: childBaselineJumlah,
+            };
           })),
         });
       }
 
-      // Get target universitas for this root from target table
-      const t = await this.targetRepo.findOne({ where: { indikatorId: root.id, tahun } });
+      // Get target universitas for this root from target table (superadmin record, unitId=1)
+      let t = await this.targetRepo.findOne({ where: { indikatorId: root.id, unitId: 1, tahun } });
+      if (!t) {
+        // Fallback: search for any available target universitas for this root and year
+        t = await this.targetRepo.findOne({ where: { indikatorId: root.id, tahun } });
+      }
 
       // Get baseline data for this root
       const rootBaseline = await this.findBaselineForIndikator(root.id, tahun, all);
@@ -142,6 +169,7 @@ export class IndikatorService {
         kode: root.kode,
         nama: root.nama,
         targetUniversitas: t ? Number(t.targetUniversitas) : null,
+        tenggat: t ? t.tenggat : null,
         targetUniversitasTahun: tahun,
         baselineJumlah: rootBaseline,
         subIndikators,
@@ -157,33 +185,50 @@ export class IndikatorService {
    * Adds disposisiJumlah to each child row.
    */
   async findGroupedForUser(jenis: string, tahun: string, userId: number, unitId: number) {
-    // Get all disposisi for this user/unit/tahun
+    // DIAGNOSTIC LOG
+    const allRecords = await this.disposisiRepo.find();
+    console.log("DIAGNOSTIC: All Disposisi Records in DB:", JSON.stringify(allRecords, null, 2));
+
+    // Get all disposisi for this user/tahun (independent of unitId for cross-unit delegation)
     const disposisis = await this.disposisiRepo.find({
-      where: { assignedTo: userId, unitId, tahun },
+      where: { assignedTo: userId, tahun },
     });
-    if (disposisis.length === 0) return [];
+    if (disposisis.length === 0) {
+      console.log(`DEBUG findGroupedForUser: No disposisi records found for userId=${userId}, tahun=${tahun}`);
+      return [];
+    }
 
     const disposisiByIndikator = new Map<number, number>();
     for (const d of disposisis) {
       disposisiByIndikator.set(d.indikatorId, Number(d.jumlah));
     }
     const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
+    console.log(`DEBUG findGroupedForUser: userId=${userId}, found ${disposisis.length} disposisis. Assigned IDs:`, Array.from(assignedIndikatorIds));
 
     // Get full grouped data
     const fullGrouped = await this.findGrouped(jenis, tahun, unitId);
 
-    // Filter: only keep groups that have at least one assigned level-2 child
+    // Filter: only keep groups that have at least one assigned level-1 or level-2 child
     const filtered: any[] = [];
     for (const group of fullGrouped) {
       const filteredSubs: any[] = [];
       for (const sub of group.subIndikators) {
+        const isSubAssigned = assignedIndikatorIds.has(sub.id);
         const filteredChildren = sub.children
           .filter((c: any) => assignedIndikatorIds.has(c.id))
           .map((c: any) => ({
             ...c,
             disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
           }));
-        if (filteredChildren.length > 0) {
+
+        if (isSubAssigned) {
+          // If sub is assigned, we keep the entire sub and its children
+          filteredSubs.push({ 
+            ...sub, 
+            disposisiJumlah: disposisiByIndikator.get(sub.id) ?? null 
+          });
+        } else if (filteredChildren.length > 0) {
+          // If sub is not assigned directly but children are, keep only assigned children
           filteredSubs.push({ ...sub, children: filteredChildren });
         }
       }
@@ -193,5 +238,27 @@ export class IndikatorService {
     }
 
     return filtered;
+  }
+
+  async findPengajuanGrouped(jenis: string, tahun: string, unitId: number): Promise<any[]> {
+    const grouped = await this.findGrouped(jenis, tahun, unitId);
+    const result: any[] = [];
+
+    for (const group of grouped) {
+      // Only show groups where superadmin has set a target universitas (at level 0)
+      if (group.targetUniversitas === null || group.targetUniversitas === undefined) continue;
+
+      const allFilled = group.subIndikators.every((s: any) =>
+        s.children.every((c: any) => c.targetFakultas !== null && c.targetFakultas !== undefined),
+      );
+      result.push({
+        ...group,
+        jenis,
+        tahun,
+        tenggat: group.tenggat ?? null,
+        status: allFilled ? 'sudah_diisi' : 'belum_diisi',
+      });
+    }
+    return result;
   }
 }
