@@ -36,6 +36,9 @@ export class Indikator {
   @Column({ name: 'jenis_data', type: 'varchar', length: 50, nullable: true })
   jenisData!: string | null;
 
+  @Column({ name: 'is_pk_berbasis_iku', type: 'boolean', default: false })
+  isPkBerbasisIku!: boolean;
+
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt!: Date;
 

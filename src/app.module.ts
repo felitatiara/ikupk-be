@@ -21,6 +21,7 @@ import { Kriteria } from './kriteria/kriteria.entity';
 import { KriteriaModule } from './kriteria/kriteria.module';
 import { Disposisi } from './disposisi/disposisi.entity';
 import { DisposisiModule } from './disposisi/disposisi.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { DisposisiModule } from './disposisi/disposisi.module';
     BaselineDataModule,
     KriteriaModule,
     DisposisiModule,
+    MonitoringModule,
   ],
   controllers: [AppController],
   providers: [AppService],

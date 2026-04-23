@@ -40,12 +40,12 @@ export class IndikatorController {
   }
 
   @Post()
-  create(@Body() data: { jenis: string; kode: string; nama: string; level: number; parentId?: number | null; jenisData?: string | null }) {
+  create(@Body() data: { jenis: string; kode: string; nama: string; level: number; parentId?: number | null; jenisData?: string | null; isPkBerbasisIku?: boolean }) {
     return this.indikatorService.create(data);
   }
 
   @Put(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() data: { jenis?: string; kode?: string; nama?: string; level?: number; parentId?: number | null; jenisData?: string | null }) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() data: { jenis?: string; kode?: string; nama?: string; level?: number; parentId?: number | null; jenisData?: string | null; isPkBerbasisIku?: boolean }) {
     return this.indikatorService.update(id, data);
   }
 

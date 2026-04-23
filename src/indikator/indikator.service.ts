@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { Indikator } from './indikator.entity';
 import { Target } from '../target/target.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
@@ -75,7 +75,43 @@ export class IndikatorService {
   }
 
   async findGrouped(jenis: string, tahun: string, unitId?: number) {
-    const all = await this.indikatorRepository.find({ where: { jenis }, order: { kode: 'ASC' } });
+    let all: Indikator[] = [];
+
+    if (jenis === 'PK') {
+      // 1. Ambil semua yang memang jenisnya PK
+      const pks = await this.indikatorRepository.find({ where: { jenis: 'PK' } });
+
+      // 2. Ambil IKU level 1 yang ditandai Berbasis IKU
+      const sharedLevel1 = await this.indikatorRepository.find({
+        where: { jenis: 'IKU', level: 1, isPkBerbasisIku: true },
+      });
+
+      if (sharedLevel1.length > 0) {
+        const l1Ids = sharedLevel1.map((i) => i.id);
+        const l0Ids = [...new Set(sharedLevel1.map((i) => i.parentId).filter((id) => id !== null))];
+
+        // Ambil parent level 0 nya
+        const sharedLevel0 = await this.indikatorRepository.find({
+          where: { id: In(l0Ids as number[]) },
+        });
+
+        // Ambil children level 2 nya
+        const sharedLevel2 = await this.indikatorRepository.find({
+          where: { parentId: In(l1Ids) },
+        });
+
+        all = [...pks, ...sharedLevel0, ...sharedLevel1, ...sharedLevel2];
+      } else {
+        all = pks;
+      }
+
+      // Deduplikasi by ID
+      const uniqueMap = new Map<number, Indikator>();
+      all.forEach((i) => uniqueMap.set(i.id, i));
+      all = Array.from(uniqueMap.values()).sort((a, b) => a.kode.localeCompare(b.kode));
+    } else {
+      all = await this.indikatorRepository.find({ where: { jenis }, order: { kode: 'ASC' } });
+    }
 
     // Level 0 = sasaran strategis (root, no parent)
     const roots = all.filter((i) => i.level === 0);
@@ -118,6 +154,7 @@ export class IndikatorService {
           nama: l1.nama,
           level: l1.level,
           parentId: l1.parentId,
+          isPkBerbasisIku: l1.isPkBerbasisIku, // Include flag
           targetId: targetIdSub,
           targetFakultas,
           targetUniversitas: targetUniversitasSub,

@@ -59,8 +59,8 @@ async function seed() {
   const userData = [
     { nip: '111', nama: 'Super Admin', email: 'admin@iku.ac.id', password: '000000', role: 'superadmin', jenis: 'Tendik', unitId: 1 },
     { nip: '222', nama: 'Admin FIK', email: 'admin.fik@iku.ac.id', password: '000000', role: 'admin', jenis: 'Tendik', unitId: 1 },
-    { nip: '333', nama: 'Wadek FIK', email: 'wadek.fik@example.com', password: '000000', role: 'pimpinan', jenis: 'Dosen', unitId: 1 },
-    { nip: '444', nama: 'Kaprodi SI', email: 'kaprodi.si@iku.ac.id', password: '000000', role: 'kaprodi', jenis: 'Dosen', unitId: 2 },
+    { nip: '333', nama: 'Wadek FIK', email: 'wadek@example.com', password: '000000', role: 'pimpinan', jenis: 'Dosen', unitId: 1 },
+    { nip: '444', nama: 'Kaprodi SI', email: 'kaprodi.fik@iku.ac.id', password: '000000', role: 'kaprodi', jenis: 'Dosen', unitId: 2 },
   ];
 
   for (const u of userData) {
