@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { User } from './user.entity';
-import { Unit } from '../unit/unit.entity';
 import { UserRelation } from './user_relation.entity';
+import { Role } from '../roles/role.entity';
+import { UserRole } from '../roles/user-role.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
@@ -13,173 +14,165 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-    @InjectRepository(Unit)
-    private unitRepository: Repository<Unit>,
     @InjectRepository(UserRelation)
     private userRelationRepo: Repository<UserRelation>,
+    @InjectRepository(Role)
+    private roleRepo: Repository<Role>,
+    @InjectRepository(UserRole)
+    private userRoleRepo: Repository<UserRole>,
   ) {}
 
   findAll(): Promise<User[]> {
-    return this.usersRepository.find();
+    return this.usersRepository.find({
+      relations: ['userRoles', 'userRoles.role'],
+    });
   }
 
   findOne(id: number): Promise<User | null> {
-    return this.usersRepository.findOneBy({ id });
+    return this.usersRepository.findOne({
+      where: { id },
+      relations: ['userRoles', 'userRoles.role'],
+    });
   }
 
   findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email }, relations: ['unit'] });
+    return this.usersRepository.findOne({
+      where: { email },
+      relations: ['userRoles', 'userRoles.role'],
+    });
   }
 
   findByNip(nip: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { nip }, relations: ['unit'] });
+    return this.usersRepository.findOne({
+      where: { nip },
+      relations: ['userRoles', 'userRoles.role'],
+    });
   }
 
-  /**
-   * Create a user.
-   * Also creates a relationship in user_relations if atasanId is provided.
-   */
   async create(dto: CreateUserDto): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
-    const payload: Partial<User> = {
+    const user = this.usersRepository.create({
       nip: dto.nip,
       nama: dto.nama,
       email: dto.email,
       password: hashed,
-      role: dto.role,
-      jenis: dto.jenis || "Dosen",
-      unitId: dto.unitId ?? null,
-    };
-
-    const user = this.usersRepository.create(payload);
+      jenis: dto.jenis ?? null,
+    });
     const savedUser = await this.usersRepository.save(user);
 
-    if (dto.atasanId) {
-      const relation = this.userRelationRepo.create({
-        userId: savedUser.id,
-        parentId: dto.atasanId,
-      });
-      await this.userRelationRepo.save(relation);
+    // Assign primary role
+    if (dto.roleId) {
+      await this.userRoleRepo.save(
+        this.userRoleRepo.create({ userId: savedUser.id, roleId: dto.roleId, isPrimary: true }),
+      );
     }
 
-    return savedUser;
+    // Assign extra roles
+    if (dto.extraRoleIds?.length) {
+      for (const rid of dto.extraRoleIds) {
+        await this.userRoleRepo.save(
+          this.userRoleRepo.create({ userId: savedUser.id, roleId: rid, isPrimary: false }),
+        );
+      }
+    }
+
+    // Assign atasan relation
+    if (dto.atasanId) {
+      await this.userRelationRepo.save(
+        this.userRelationRepo.create({ userId: savedUser.id, parentId: dto.atasanId }),
+      );
+    }
+
+    return (await this.findOne(savedUser.id))!;
+  }
+
+  async findAllRoles(): Promise<Role[]> {
+    return this.roleRepo.find({ order: { level: 'ASC', name: 'ASC' } });
   }
 
   async findByName(name: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { nama: name } });
   }
 
-  /**
-   * Returns:
-   *   { user } if success
-   *   { error: 'not_found' } if user not found
-   *   { error: 'wrong_password' } if password mismatch
-   */
   async validateCredentials(identifier: string, password: string): Promise<{ user?: User; error?: string }> {
-    // try by email
     let user = await this.findByEmail(identifier);
-    // try by NIP
-    if (!user) {
-      user = await this.findByNip(identifier);
-    }
-    // try by id
-    if (!user && !isNaN(Number(identifier))) {
-      user = await this.findOne(Number(identifier));
-    }
-    // try by nama
-    if (!user) {
-      user = await this.findByName(identifier);
-    }
-
+    if (!user) user = await this.findByNip(identifier);
+    if (!user && !isNaN(Number(identifier))) user = await this.findOne(Number(identifier));
+    if (!user) user = await this.findByName(identifier);
     if (!user) return { error: 'not_found' };
 
-    // Allow login with either bcrypt or plaintext password (for legacy users)
     let match = false;
     if (user.password.startsWith('$2')) {
-      // bcrypt hash
       match = await bcrypt.compare(password, user.password);
     } else {
-      // plaintext fallback
       match = password === user.password;
     }
     if (!match) return { error: 'wrong_password' };
     return { user };
   }
 
-  /**
-   * Update user by id.
-   * Also updates relationship in user_relations if atasanId is provided.
-   */
   async update(id: number, dto: UpdateUserDto): Promise<User | null> {
     const payload: Partial<User> = {};
     if (dto.nip !== undefined) payload.nip = dto.nip ?? null;
     if (dto.nama) payload.nama = dto.nama;
     if (dto.email) payload.email = dto.email;
     if (dto.password) payload.password = await bcrypt.hash(dto.password, 10);
-    if (dto.role !== undefined) payload.role = dto.role;
-    if (dto.jenis !== undefined) payload.jenis = dto.jenis;
-    if (dto.unitId !== undefined) payload.unitId = dto.unitId ?? null;
+    if (dto.jenis !== undefined) payload.jenis = dto.jenis ?? null;
 
-    await this.usersRepository.update(id, payload);
+    if (Object.keys(payload).length > 0) {
+      await this.usersRepository.update(id, payload);
+    }
 
-    if (dto.atasanId !== undefined) {
-      // Remove old relations
-      await this.userRelationRepo.delete({ userId: id });
-      
-      if (dto.atasanId !== null) {
-        // Add new relation
-        const relation = this.userRelationRepo.create({
-          userId: id,
-          parentId: dto.atasanId,
-        });
-        await this.userRelationRepo.save(relation);
+    // Update primary role
+    if (dto.roleId !== undefined) {
+      await this.userRoleRepo.update({ userId: id, isPrimary: true }, { isPrimary: false });
+      if (dto.roleId !== null) {
+        const existing = await this.userRoleRepo.findOne({ where: { userId: id, roleId: dto.roleId } });
+        if (existing) {
+          await this.userRoleRepo.update(existing.id, { isPrimary: true });
+        } else {
+          await this.userRoleRepo.save(
+            this.userRoleRepo.create({ userId: id, roleId: dto.roleId, isPrimary: true }),
+          );
+        }
       }
     }
 
-    return (await this.findOne(id)) as User | null;
+    // Update atasan relation
+    if (dto.atasanId !== undefined) {
+      await this.userRelationRepo.delete({ userId: id });
+      if (dto.atasanId !== null) {
+        await this.userRelationRepo.save(
+          this.userRelationRepo.create({ userId: id, parentId: dto.atasanId }),
+        );
+      }
+    }
+
+    return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {
     await this.usersRepository.delete(id);
   }
 
-  async findByUnit(unitId: number): Promise<User[]> {
-    // Get child units (e.g. Prodi under Fakultas)
-    const childUnits = await this.unitRepository.find({
-      where: { parentId: unitId },
+  async findByRole(roleId: number): Promise<User[]> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { roleId },
+      relations: ['user'],
     });
-    const unitIds = [unitId, ...childUnits.map((u) => u.id)];
-    return this.usersRepository.find({
-      where: { unitId: In(unitIds) },
-      select: ['id', 'nip', 'nama', 'email', 'role'],
-    });
+    return userRoles.map((ur) => ur.user).filter(Boolean);
   }
 
-  /**
-   * Mengambil daftar user yang berada DI BAWAH userId dalam hierarki user_relations.
-   * Artinya: ambil semua user_relations di mana parent_id = userId,
-   * lalu kembalikan data user-nya.
-   */
   async findRelatedUsersFor(userId: number): Promise<User[]> {
     const relations = await this.userRelationRepo.find({
       where: { parentId: userId },
-      relations: ['user'],
+      relations: ['user', 'user.userRoles', 'user.userRoles.role'],
     });
-    const userIds = relations.map((r) => r.user?.id).filter(Boolean) as number[];
-    if (userIds.length === 0) return [];
-    return this.usersRepository.find({
-      where: { id: In(userIds) },
-      select: ['id', 'nip', 'nama', 'email', 'role'],
-    });
+    return relations.map((r) => r.user).filter(Boolean) as User[];
   }
 
-  /**
-   * Mengecek apakah user ini memiliki bawahan di user_relations.
-   */
   async hasRelatedUsers(userId: number): Promise<boolean> {
-    const count = await this.userRelationRepo.count({
-      where: { parentId: userId },
-    });
+    const count = await this.userRelationRepo.count({ where: { parentId: userId } });
     return count > 0;
   }
 }

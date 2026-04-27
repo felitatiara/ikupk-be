@@ -1,5 +1,5 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { Unit } from '../unit/unit.entity';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { UserRole } from '../roles/user-role.entity';
 
 @Entity('users')
 export class User {
@@ -18,18 +18,12 @@ export class User {
   @Column({ name: 'password', type: 'varchar', length: 255, nullable: false })
   password: string;
 
-  @Column({ name: 'jenis', type: 'varchar', length: 50, nullable: false })
-  jenis: string;
+  // Jenis kepegawaian, e.g. "PNS", "Non-PNS", "Kontrak"
+  @Column({ name: 'jenis', type: 'varchar', length: 50, nullable: true })
+  jenis: string | null;
 
-  @Column({ name: 'role', type: 'varchar', length: 50, nullable: false })
-  role: string;
-
-  @Column({ name: 'unit_id', type: 'int', nullable: true })
-  unitId: number | null;
-
-  @ManyToOne(() => Unit, (unit) => unit.users, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'unit_id' })
-  unit: Unit | null;
+  @OneToMany(() => UserRole, (ur) => ur.user, { cascade: true, eager: false })
+  userRoles: UserRole[];
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;

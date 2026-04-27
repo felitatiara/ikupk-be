@@ -2,155 +2,86 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
-import { Target } from '../target/target.entity';
-import { Unit } from '../unit/unit.entity';
+import { TargetUniversitas } from '../target/target.entity';
+import { TargetUnit } from '../target/target-unit.entity';
 import { User } from '../users/user.entity';
-
-export interface TargetRow {
-  date: string;
-  title: string;
-  sasaran: string;
-  capaian: string;
-}
-
-export interface TargetDetail {
-  id: number;
-  tenggat: string;
-  targetNama: string;
-  sasaranStrategis: string;
-  capaian: string;
-  unitNama: string;
-  tahun: string;
-  targetUniversitas: number | null;
-}
+import { Disposisi } from '../disposisi/disposisi.entity';
+import { Realisasi } from '../realisasi/realisasi.entity';
+import { Role } from '../roles/role.entity';
+import { UserRole } from '../roles/user-role.entity';
 
 @Injectable()
 export class TargetsService {
   constructor(
     @InjectRepository(Indikator)
     private indikatorRepo: Repository<Indikator>,
-    @InjectRepository(Target)
-    private targetRepo: Repository<Target>,
-    @InjectRepository(Unit)
-    private unitRepo: Repository<Unit>,
+    @InjectRepository(TargetUniversitas)
+    private targetUniRepo: Repository<TargetUniversitas>,
+    @InjectRepository(TargetUnit)
+    private targetUnitRepo: Repository<TargetUnit>,
+    @InjectRepository(Role)
+    private roleRepo: Repository<Role>,
     @InjectRepository(User)
     private userRepo: Repository<User>,
+    @InjectRepository(UserRole)
+    private userRoleRepo: Repository<UserRole>,
+    @InjectRepository(Disposisi)
+    private disposisiRepo: Repository<Disposisi>,
+    @InjectRepository(Realisasi)
+    private realisasiRepo: Repository<Realisasi>,
   ) {}
 
-  async getAll(): Promise<TargetRow[]> {
-    const indiks = await this.indikatorRepo.find();
-    let rows: TargetRow[] = [];
-
-    // If no indikators in database, return mock data for demo
-    if (indiks.length === 0) {
-      rows = [
-        {
-          date: '02 Januari 2025',
-          title: 'Perjanjian Kerja',
-          sasaran: 'Pemberitahuan kegiatan melalui web Fakultas',
-          capaian: '100%',
-        },
-        {
-          date: '02 Januari 2025',
-          title: 'Perjanjian Kerja',
-          sasaran: 'Laporan Rapat Tinjauan Manajemen (RTM)',
-          capaian: '100%',
-        },
-        {
-          date: '02 Januari 2025',
-          title: 'Perjanjian Kerja',
-          sasaran: 'Penyelesaian LPI',
-          capaian: '0%',
-        },
-        {
-          date: '31 Maret 2025',
-          title: 'Indikator Kinerja Utama',
-          sasaran: 'Meningkatnya kualitas lulusan pendidikan tinggi',
-          capaian: '0%',
-        },
-        {
-          date: '31 Maret 2025',
-          title: 'Indikator Kinerja Utama',
-          sasaran: 'Persentase dosen yang berkegatan tridharma',
-          capaian: '0%',
-        },
-        {
-          date: '31 September 2025',
-          title: 'Indikator Kinerja Utama',
-          sasaran: 'Mahasiswa menghubiskan paling tidak 20 SKS diluar kampus',
-          capaian: '0%',
-        },
-        {
-          date: '31 September 2025',
-          title: 'Indikator Kinerja Utama',
-          sasaran: 'Mahasiswa inbound diterima Pertukaran Mahasiswa Internasional',
-          capaian: '0%',
-        },
-      ];
-      return rows;
-    }
-
-    for (const ind of indiks) {
-      // fetch associated target rows
-      const targets = await this.targetRepo.find({ where: { indikatorId: ind.id } });
-
-      if (targets.length > 0) {
-        targets.forEach((t) => {
-          rows.push({
-            date: this.formatDate(t.createdAt ?? ind.createdAt),
-            title: ind.nama,
-            sasaran: '',
-            capaian: t.targetUniversitas !== null && t.targetUniversitas !== undefined ? String(t.targetUniversitas) : '',
-          });
-        });
-      } else {
-        // no targets — show the indikator itself
-        rows.push({
-          date: this.formatDate(ind.createdAt),
-          title: ind.nama,
-          sasaran: '',
-          capaian: '',
-        });
-      }
-    }
-
-    // Sort by date
-    rows.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    return rows;
+  private formatDate(date: Date | string): string {
+    const d = new Date(date);
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
   }
 
-  async getTargetDetailByUnit(unitId: number): Promise<TargetDetail[]> {
-    const targets = await this.targetRepo.find({
-      where: { unitId },
-      relations: ['indikator', 'unit'],
-    });
+  private buildIndikatorRootFinder(allIndikators: Indikator[]) {
+    const map = new Map(allIndikators.map((i) => [i.id, i]));
+    return (id: number): number => {
+      let current = map.get(id);
+      while (current && current.parentId) current = map.get(current.parentId);
+      return current ? current.id : id;
+    };
+  }
 
+  async getAll(): Promise<any[]> {
+    const targets = await this.targetUniRepo.find({ relations: ['indikator'] });
+    return targets.map((t) => ({
+      date: this.formatDate(t.createdAt),
+      title: t.indikator?.nama || '',
+      sasaran: '',
+      capaian: t.persentase != null ? `${t.persentase}%` : '',
+    }));
+  }
+
+  async getTargetDetailByRole(roleId: number): Promise<any[]> {
+    const targets = await this.targetUnitRepo.find({
+      where: { roleId },
+      relations: ['indikator', 'role'],
+    });
     return targets.map((t) => ({
       id: t.id,
       tenggat: this.formatDate(t.createdAt),
       targetNama: t.indikator?.nama || '',
       sasaranStrategis: t.indikator?.nama || '',
       capaian: '0%',
-      unitNama: t.unit?.nama || '',
+      roleNama: t.role?.name || '',
+      unitNama: t.role?.unitNama || '',
       tahun: t.tahun,
-      targetUniversitas: t.targetUniversitas,
+      nilaiTarget: t.nilaiTarget,
     }));
   }
 
   async getTargetsForAdminFIK(): Promise<any[]> {
-    // Fetch semua indikator
     const indikators = await this.indikatorRepo.find();
-
-    // Untuk setiap indikator, fetch target per unit
     const result: any[] = [];
-
     for (const indikator of indikators) {
-      const targets = await this.targetRepo.find({
+      const targets = await this.targetUnitRepo.find({
         where: { indikatorId: indikator.id },
-        relations: ['unit'],
+        relations: ['role'],
       });
-
       result.push({
         indikatorId: indikator.id,
         indikatorNama: indikator.nama,
@@ -160,311 +91,317 @@ export class TargetsService {
         indikatorTipe: indikator.parentId === null ? 'SASARAN STRATEGIS' : 'INDIKATOR KINERJA KEGIATAN',
         targets: targets.map((t) => ({
           id: t.id,
-          unitId: t.unitId,
-          unitNama: t.unit?.nama || '',
+          roleId: t.roleId,
+          roleNama: t.role?.name || '',
+          unitNama: t.role?.unitNama || '',
           tahun: t.tahun,
-          targetAngka: t.targetUniversitas,
+          nilaiTarget: t.nilaiTarget,
           createdAt: t.createdAt,
         })),
       });
     }
-
     return result;
-  }
-
-  private formatDate(date: Date | string): string {
-    const d = new Date(date);
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    return `${d.getDate().toString().padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  }
-
-  async getIkuPk(unitId: number, userId?: number): Promise<any[]> {
-    const where: any = { unitId, status: 'disposisi' };
-    
-    if (userId) {
-      // Fetch user to check role
-      const user = await this.userRepo.findOne({ where: { id: userId } });
-      const leaderRoles = ['pimpinan', 'Wadek1', 'Wadek2', 'Wadek3'];
-      
-      if (user && leaderRoles.includes(user.role)) {
-        // Leaders see everything in their unit that is 'disposisi'
-        // No additional filter needed beyond unitId and status
-      } else {
-        // Others only see what is specifically assigned to them
-        where.assignedTo = userId;
-      }
-    }
-
-    const targets = await this.targetRepo.find({
-      where,
-      relations: ['indikator'],
-    });
-
-    const result: any[] = [];
-
-    for (const t of targets) {
-      const indikator = t.indikator;
-      if (!indikator) continue;
-
-      const jenisLabel = indikator.jenis?.toUpperCase() === 'IKU'
-        ? 'Indikator Kinerja Utama'
-        : 'Perjanjian Kerja';
-
-      result.push({
-        id: t.id,
-        indikatorId: t.indikatorId,
-        tahun: t.tahun,
-        target: jenisLabel,
-        sasaranStrategis: indikator.nama,
-        targetUniversitas: Number(t.targetUniversitas) || 0,
-        capaian: 0,
-        tenggat: t.tahun,
-        unitId: t.unitId,
-      });
-    }
-
-    return result;
-  }
-
-  async create(data: { indikatorId: number; unitId: number; tahun: string; targetUniversitas?: number | null }): Promise<Target> {
-    const target = this.targetRepo.create({
-      indikatorId: data.indikatorId,
-      unitId: data.unitId,
-      tahun: data.tahun,
-      targetUniversitas: data.targetUniversitas ?? null,
-      status: 'pending_fakultas',
-    });
-    return this.targetRepo.save(target);
   }
 
   async getAdminTargetsGrouped(): Promise<any[]> {
-    const targets = await this.targetRepo.find({
-      relations: ['indikator', 'unit'],
-    });
-
+    const targets = await this.targetUnitRepo.find({ relations: ['indikator', 'role'] });
     if (targets.length === 0) return [];
-
     const allIndikators = await this.indikatorRepo.find();
-    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
-
-    const findRootIndikator = (indikatorId: number): number => {
-      let current = indikatorMap.get(indikatorId);
-      while (current && current.parentId) {
-        current = indikatorMap.get(current.parentId);
-      }
-      return current ? current.id : indikatorId;
-    };
-
+    const findRoot = this.buildIndikatorRootFinder(allIndikators);
+    const indikatorMap = new Map(allIndikators.map((i) => [i.id, i]));
     const seen = new Map<string, boolean>();
     const results: any[] = [];
-
     for (const t of targets) {
-      const rootId = findRootIndikator(t.indikatorId);
-      const key = `${rootId}_${t.tahun}_${t.unitId}`;
+      const rootId = findRoot(t.indikatorId);
+      const key = `${rootId}_${t.tahun}_${t.roleId}`;
       if (seen.has(key)) continue;
       seen.set(key, true);
-
       const rootIndikator = indikatorMap.get(rootId);
-      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU'
-        ? 'Indikator Kinerja Utama'
-        : 'Perjanjian Kerja';
-
-      const tu = t.targetUniversitas;
-
-      const statusLabel = t.status === 'pending_fakultas' ? 'Menunggu Target Fakultas'
-        : t.status === 'pending_pimpinan' ? 'Menunggu Validasi Pimpinan'
-        : t.status === 'disposisi' ? 'Disposisi'
-        : t.status;
-
+      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja';
+      const statusLabel =
+        t.statusValidasi === 'draft' ? 'Belum Diajukan'
+        : t.statusValidasi === 'diajukan' ? 'Menunggu Validasi Pimpinan'
+        : t.statusValidasi === 'disetujui' ? 'Disetujui'
+        : t.statusValidasi === 'ditolak' ? 'Ditolak'
+        : t.statusValidasi;
       results.push({
         id: t.id,
         indikatorId: rootId,
         tahun: t.tahun,
         target: jenisLabel,
         sasaranStrategis: rootIndikator?.nama || '',
-        targetUniversitas: Number(tu) || 0,
-        unitId: t.unitId,
-        unitNama: t.unit?.nama || '',
+        nilaiTarget: Number(t.nilaiTarget) || 0,
+        roleId: t.roleId,
+        roleNama: t.role?.name || '',
+        unitNama: t.role?.unitNama || '',
         status: statusLabel,
         createdAt: t.createdAt,
       });
     }
-
     return results;
   }
 
-  async getPendingFakultas(unitId: number): Promise<any[]> {
-    // Get all target_universitas entries where there are pending_fakultas targets for this unit
-    const targets = await this.targetRepo.find({
-      where: { unitId, status: 'pending_fakultas' },
-      relations: ['indikator'],
-    });
-
-    if (targets.length === 0) return [];
-
-    const allIndikators = await this.indikatorRepo.find();
-    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
-
-    const findRootIndikator = (indikatorId: number): number => {
-      let current = indikatorMap.get(indikatorId);
-      while (current && current.parentId) {
-        current = indikatorMap.get(current.parentId);
+  async getIkuPk(roleId: number, userId?: number): Promise<any[]> {
+    if (userId) {
+      const userRoles = await this.userRoleRepo.find({ where: { userId }, relations: ['role'] });
+      const primaryRole = userRoles.find((ur) => ur.isPrimary) ?? userRoles[0];
+      const isPimpinan = primaryRole && primaryRole.role.level <= 1;
+      if (!isPimpinan) {
+        const disposisis = await this.disposisiRepo.find({
+          where: { toUserId: userId },
+          relations: ['indikator'],
+        });
+        return disposisis.map((d) => ({
+          id: d.id,
+          indikatorId: d.indikatorId,
+          tahun: d.tahun,
+          target: d.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+          sasaranStrategis: d.indikator?.nama || '',
+          jumlahTarget: Number(d.jumlahTarget) || 0,
+          roleId,
+        }));
       }
-      return current ? current.id : indikatorId;
-    };
+    }
+    const targets = await this.targetUnitRepo.find({ where: { roleId }, relations: ['indikator'] });
+    return targets.map((t) => ({
+      id: t.id,
+      indikatorId: t.indikatorId,
+      tahun: t.tahun,
+      target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+      sasaranStrategis: t.indikator?.nama || '',
+      nilaiTarget: Number(t.nilaiTarget) || 0,
+      roleId: t.roleId,
+    }));
+  }
 
-    // Group by root indikator + tahun → one row per target_universitas
+  async create(data: { indikatorId: number; roleId?: number; tahun: string; nilai?: number | null }): Promise<TargetUniversitas | TargetUnit> {
+    const indikator = await this.indikatorRepo.findOneBy({ id: data.indikatorId });
+    if (indikator?.level === 0) {
+      const t = this.targetUniRepo.create({ indikatorId: data.indikatorId, tahun: data.tahun, persentase: data.nilai ?? 0 });
+      return this.targetUniRepo.save(t);
+    }
+    const t = this.targetUnitRepo.create({ indikatorId: data.indikatorId, roleId: data.roleId!, tahun: data.tahun, nilaiTarget: data.nilai ?? null, statusValidasi: 'draft' });
+    return this.targetUnitRepo.save(t);
+  }
+
+  async getPendingFakultas(roleId: number): Promise<any[]> {
+    const targets = await this.targetUnitRepo.find({ where: { roleId, statusValidasi: 'draft' }, relations: ['indikator'] });
+    const allIndikators = await this.indikatorRepo.find();
+    const findRoot = this.buildIndikatorRootFinder(allIndikators);
+    const indikatorMap = new Map(allIndikators.map((i) => [i.id, i]));
     const seen = new Map<string, boolean>();
     const results: any[] = [];
-
     for (const t of targets) {
-      const rootId = findRootIndikator(t.indikatorId);
+      const rootId = findRoot(t.indikatorId);
       const key = `${rootId}_${t.tahun}`;
       if (seen.has(key)) continue;
       seen.set(key, true);
-
       const rootIndikator = indikatorMap.get(rootId);
-      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU'
-        ? 'Indikator Kinerja Utama'
-        : 'Perjanjian Kerja';
-
       results.push({
         id: t.id,
         indikatorId: rootId,
         tahun: t.tahun,
-        target: jenisLabel,
+        target: rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
         sasaranStrategis: rootIndikator?.nama || '',
-        targetUniversitas: Number(t.targetUniversitas) || 0,
-        status: 'pending_fakultas',
+        nilaiTarget: Number(t.nilaiTarget) || 0,
+        status: 'draft',
         createdAt: t.createdAt,
       });
     }
-
     return results;
   }
 
-  async getTargetItemsByRoot(unitId: number, rootIndikatorId: number, tahun: string): Promise<any[]> {
+  async getTargetItemsByRoot(roleId: number, rootIndikatorId: number, tahun: string): Promise<any[]> {
     const allIndikators = await this.indikatorRepo.find();
-    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
-
-    const findRootIndikator = (id: number): number => {
-      let current = indikatorMap.get(id);
-      while (current && current.parentId) {
-        current = indikatorMap.get(current.parentId);
-      }
-      return current ? current.id : id;
-    };
-
-    const childIds = allIndikators.filter(i => findRootIndikator(i.id) === rootIndikatorId).map(i => i.id);
-
-    const targets = await this.targetRepo.find({
-      where: childIds.map(cid => ({ indikatorId: cid, unitId, tahun })),
+    const findRoot = this.buildIndikatorRootFinder(allIndikators);
+    const childIds = allIndikators.filter((i) => findRoot(i.id) === rootIndikatorId).map((i) => i.id);
+    if (childIds.length === 0) return [];
+    const targets = await this.targetUnitRepo.find({
+      where: childIds.map((cid) => ({ indikatorId: cid, roleId, tahun })),
       relations: ['indikator'],
     });
-
-    return targets.map(t => ({
+    return targets.map((t) => ({
       targetId: t.id,
       indikatorId: t.indikatorId,
       indikatorNama: t.indikator?.nama || '',
       indikatorKode: t.indikator?.kode || '',
-      targetUniversitas: Number(t.targetUniversitas) || 0,
-      status: t.status,
+      nilaiTarget: Number(t.nilaiTarget) || 0,
+      status: t.statusValidasi,
     }));
   }
 
-  async inputTargetFakultas(id: number, targetUniversitas: number): Promise<Target> {
-    await this.targetRepo.update(id, { targetUniversitas, status: 'pending_pimpinan' });
-    return this.targetRepo.findOneOrFail({ where: { id }, relations: ['indikator'] });
+  async inputTargetFakultas(id: number, nilaiTarget: number): Promise<TargetUnit> {
+    await this.targetUnitRepo.update(id, { nilaiTarget, statusValidasi: 'diajukan' });
+    return this.targetUnitRepo.findOneOrFail({ where: { id }, relations: ['indikator'] });
   }
 
   async submitTargetFakultas(items: { targetId: number; targetUniversitas: number }[]): Promise<void> {
     for (const item of items) {
-      await this.targetRepo.update(item.targetId, { targetUniversitas: item.targetUniversitas });
+      await this.targetUnitRepo.update(item.targetId, { nilaiTarget: item.targetUniversitas });
     }
   }
 
-  async getForPimpinanValidasi(unitId: number): Promise<any[]> {
-    const targets = await this.targetRepo.find({
-      where: { unitId, status: 'pending_pimpinan' },
-      relations: ['indikator'],
-    });
-
+  async getForPimpinanValidasi(roleId: number): Promise<any[]> {
+    const targets = await this.targetUnitRepo.find({ where: { roleId, statusValidasi: 'diajukan' }, relations: ['indikator'] });
     const allIndikators = await this.indikatorRepo.find();
-    const indikatorMap = new Map(allIndikators.map(i => [i.id, i]));
-
-    const findRootIndikator = (indikatorId: number): number => {
-      let current = indikatorMap.get(indikatorId);
-      while (current && current.parentId) {
-        current = indikatorMap.get(current.parentId);
-      }
-      return current ? current.id : indikatorId;
-    };
-
-    const results: any[] = [];
-    for (const t of targets) {
-      const indikator = t.indikator;
-      const jenisLabel = indikator?.jenis?.toUpperCase() === 'IKU'
-        ? 'Indikator Kinerja Utama'
-        : 'Perjanjian Kerja';
-
-      const rootId = findRootIndikator(t.indikatorId);
+    const findRoot = this.buildIndikatorRootFinder(allIndikators);
+    const indikatorMap = new Map(allIndikators.map((i) => [i.id, i]));
+    return targets.map((t) => {
+      const rootId = findRoot(t.indikatorId);
       const rootIndikator = indikatorMap.get(rootId);
-
-      results.push({
+      return {
         id: t.id,
         indikatorId: t.indikatorId,
         tahun: t.tahun,
-        target: jenisLabel,
-        sasaranStrategis: rootIndikator?.nama || indikator?.nama || '',
-        targetUniversitas: Number(t.targetUniversitas) || 0,
-        capaian: 0,
-        status: t.status,
+        target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+        sasaranStrategis: rootIndikator?.nama || t.indikator?.nama || '',
+        nilaiTarget: Number(t.nilaiTarget) || 0,
+        status: t.statusValidasi,
         createdAt: t.createdAt,
+      };
+    });
+  }
+
+  async updateStatus(id: number, status: string): Promise<TargetUnit> {
+    await this.targetUnitRepo.update(id, { statusValidasi: status });
+    return this.targetUnitRepo.findOneOrFail({ where: { id } });
+  }
+
+  async upsertTargetUniversitas(indikatorId: number, _roleId: number, tahun: string, persentase: number, tenggat?: string): Promise<TargetUniversitas> {
+    let target = await this.targetUniRepo.findOne({ where: { indikatorId, tahun } });
+    if (target) {
+      target.persentase = persentase;
+      if (tenggat !== undefined) target.tenggat = tenggat ?? null;
+      return this.targetUniRepo.save(target);
+    }
+    target = this.targetUniRepo.create({ indikatorId, tahun, persentase, tenggat: tenggat ?? null });
+    return this.targetUniRepo.save(target);
+  }
+
+  async disposisi(indikatorId: number, roleId: number, tahun: string, _assignedTo: number): Promise<TargetUnit | null> {
+    const target = await this.targetUnitRepo.findOne({ where: { indikatorId, roleId, tahun } });
+    if (target) {
+      target.statusValidasi = 'diajukan';
+      return this.targetUnitRepo.save(target);
+    }
+    return null;
+  }
+
+  async upsertTargetFakultas(indikatorId: number, roleId: number, tahun: string, nilaiTarget: number): Promise<TargetUnit> {
+    let target = await this.targetUnitRepo.findOne({ where: { indikatorId, roleId, tahun } });
+    if (target) {
+      target.nilaiTarget = nilaiTarget;
+      return this.targetUnitRepo.save(target);
+    }
+    target = this.targetUnitRepo.create({ indikatorId, roleId, tahun, nilaiTarget, statusValidasi: 'draft' });
+    return this.targetUnitRepo.save(target);
+  }
+
+  async getMasterSKP(tahun?: string, roleId?: number): Promise<any[]> {
+    const disposisiWhere: any = {};
+    if (tahun) disposisiWhere.tahun = tahun;
+    const allDisposisi = await this.disposisiRepo.find({
+      where: disposisiWhere,
+      relations: ['toUser', 'toUser.userRoles', 'toUser.userRoles.role', 'indikator'],
+    });
+    if (allDisposisi.length === 0) return [];
+    const realisasiWhere: any = {};
+    if (tahun) realisasiWhere.tahun = tahun;
+    const allRealisasi = await this.realisasiRepo.find({ where: realisasiWhere });
+    const userDisposisiMap = new Map<number, Disposisi[]>();
+    for (const d of allDisposisi) {
+      if (!d.toUserId) continue;
+      const list = userDisposisiMap.get(d.toUserId) ?? [];
+      list.push(d);
+      userDisposisiMap.set(d.toUserId, list);
+    }
+    const results: any[] = [];
+    for (const [userId, disposisiList] of userDisposisiMap.entries()) {
+      const user = disposisiList[0].toUser;
+      if (!user) continue;
+      if (roleId) {
+        const hasRole = user.userRoles?.some((ur) => ur.roleId === roleId);
+        if (!hasRole) continue;
+      }
+      const primaryRole = user.userRoles?.find((ur) => ur.isPrimary) ?? user.userRoles?.[0];
+      const jumlahIndikator = disposisiList.length;
+      const userRealisasi = allRealisasi.filter((r) => r.createdBy === userId);
+      const tervalidasi = userRealisasi.filter((r) => r.status === 'approved').length;
+      let totalCapaian = 0;
+      let countCapaian = 0;
+      for (const d of disposisiList) {
+        const rel = allRealisasi.find((r) => r.createdBy === userId && r.indikatorId === d.indikatorId);
+        if (rel && Number(d.jumlahTarget) > 0) {
+          const pct = (Number(rel.realisasiAngka) / Number(d.jumlahTarget)) * 100;
+          totalCapaian += Math.min(pct, 100);
+          countCapaian++;
+        }
+      }
+      const rataCapaian = countCapaian > 0 ? Math.round((totalCapaian / countCapaian) * 10) / 10 : null;
+      let statusSKP: 'draft' | 'submitted' | 'approved' | 'rejected' = 'draft';
+      if (tervalidasi === jumlahIndikator && jumlahIndikator > 0) statusSKP = 'approved';
+      else if (userRealisasi.length > 0) statusSKP = 'submitted';
+      results.push({
+        id: userId,
+        userId,
+        nip: user.nip || '',
+        namaPegawai: user.nama || '',
+        jabatan: primaryRole?.role?.name || user.jenis || '',
+        unitKerja: primaryRole?.role?.unitNama || '',
+        roleId: primaryRole?.roleId ?? null,
+        periode: disposisiList[0].tahun,
+        jumlahIndikator,
+        tervalidasi,
+        statusSKP,
+        rataCapaian,
       });
     }
-
     return results;
   }
 
-  async updateStatus(id: number, status: string, assignedTo?: number): Promise<Target> {
-    const update: any = { status };
-    if (assignedTo !== undefined) {
-      update.assignedTo = assignedTo;
-    }
-    await this.targetRepo.update(id, update);
-    return this.targetRepo.findOneOrFail({ where: { id } });
+  async updateUserSKPStatus(userId: number, status: 'approved' | 'rejected', tahun?: string): Promise<void> {
+    const where: any = { createdBy: userId };
+    if (tahun) where.tahun = tahun;
+    await this.realisasiRepo.update(where, { status });
   }
 
-  async upsertTargetUniversitas(indikatorId: number, unitId: number, tahun: string, targetUniversitas: number, tenggat?: string): Promise<Target> {
-    let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
-    if (target) {
-      target.targetUniversitas = targetUniversitas;
-      if (tenggat !== undefined) target.tenggat = tenggat;
-      return this.targetRepo.save(target);
-    }
-    target = this.targetRepo.create({ indikatorId, unitId, tahun, targetUniversitas, tenggat: tenggat ?? null, status: 'pending_fakultas' });
-    return this.targetRepo.save(target);
+  async getForValidation(roleId?: number, tahun?: string, statusValidasi?: string): Promise<any[]> {
+    const where: any = {};
+    if (roleId) where.roleId = roleId;
+    if (tahun) where.tahun = tahun;
+    if (statusValidasi) where.statusValidasi = statusValidasi;
+    const targets = await this.targetUnitRepo.find({ where, relations: ['indikator', 'role'] });
+    return targets.map((t, idx) => ({
+      id: t.id,
+      no: idx + 1,
+      unitKerja: t.role?.unitNama || '',
+      roleNama: t.role?.name || '',
+      namaIndikator: t.indikator?.nama || '',
+      kodeIndikator: t.indikator?.kode || '',
+      nilaiTarget: Number(t.nilaiTarget) || null,
+      satuan: 'Satuan',
+      periode: t.tahun,
+      statusValidasi: t.statusValidasi || 'draft',
+      catatan: t.catatan,
+    }));
   }
 
-  async disposisi(indikatorId: number, unitId: number, tahun: string, assignedTo: number): Promise<Target> {
-    let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
-    if (target) {
-      target.status = 'disposisi';
-      target.assignedTo = assignedTo;
-      return this.targetRepo.save(target);
-    }
-    target = this.targetRepo.create({ indikatorId, unitId, tahun, status: 'disposisi', assignedTo });
-    return this.targetRepo.save(target);
-  }
-
-  async upsertTargetFakultas(indikatorId: number, unitId: number, tahun: string, targetFakultas: number): Promise<Target> {
-    let target = await this.targetRepo.findOne({ where: { indikatorId, unitId, tahun } });
-    if (target) {
-      target.targetFakultas = targetFakultas;
-      return this.targetRepo.save(target);
-    }
-    target = this.targetRepo.create({ indikatorId, unitId, tahun, targetFakultas, status: 'pending_fakultas' });
-    return this.targetRepo.save(target);
+  async updateValidationStatus(id: number, status: 'pending' | 'approved' | 'rejected', catatanAdmin?: string): Promise<any> {
+    const mappedStatus = status === 'pending' ? 'diajukan' : status === 'approved' ? 'disetujui' : 'ditolak';
+    await this.targetUnitRepo.update(id, { statusValidasi: mappedStatus, catatan: catatanAdmin || null });
+    const target = await this.targetUnitRepo.findOne({ where: { id }, relations: ['indikator', 'role'] });
+    if (!target) throw new Error('Target not found');
+    return {
+      id: target.id,
+      unitKerja: target.role?.unitNama || '',
+      roleNama: target.role?.name || '',
+      namaIndikator: target.indikator?.nama || '',
+      kodeIndikator: target.indikator?.kode || '',
+      nilaiTarget: Number(target.nilaiTarget) || null,
+      satuan: 'Satuan',
+      periode: target.tahun,
+      statusValidasi: target.statusValidasi,
+      catatan: target.catatan,
+    };
   }
 }
-

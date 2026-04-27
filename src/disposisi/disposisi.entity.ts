@@ -1,6 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
-import { Unit } from '../unit/unit.entity';
 import { User } from '../users/user.entity';
 
 @Entity('disposisi')
@@ -15,32 +20,44 @@ export class Disposisi {
   @JoinColumn({ name: 'indikator_id' })
   indikator: Indikator;
 
-  @Column({ name: 'unit_id', type: 'int' })
-  unitId: number;
+  // User yang MEMBERI disposisi (null = dari pimpinan tertinggi / super admin)
+  @Column({ name: 'from_user_id', type: 'int', nullable: true })
+  fromUserId: number | null;
 
-  @ManyToOne(() => Unit, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'unit_id' })
-  unit: Unit;
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'from_user_id' })
+  fromUser: User | null;
+
+  // User yang MENERIMA disposisi
+  @Column({ name: 'to_user_id', type: 'int', nullable: true })
+  toUserId: number;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'to_user_id' })
+  toUser: User;
+
+  // Jumlah target yang didisposisikan
+  @Column({ name: 'jumlah_target', type: 'numeric' })
+  jumlahTarget: number;
 
   @Column({ type: 'varchar', length: 4 })
   tahun: string;
 
-  @Column({ name: 'assigned_to', type: 'int' })
-  assignedTo: number;
+  // Pointer ke disposisi induk untuk melacak rantai:
+  // Wadek→Kajur (parent_id: null) → Kajur→Kaprodi → Kaprodi→Dosen
+  @Column({ name: 'parent_id', type: 'int', nullable: true })
+  parentId: number | null;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'assigned_to' })
-  assignedUser: User;
+  @ManyToOne(() => Disposisi, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parent_id' })
+  parent: Disposisi | null;
 
-  @Column({ name: 'disposed_by', type: 'int', nullable: true })
-  disposedBy: number | null;
-
-  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'disposed_by' })
-  disposedByUser: User | null;
-
-  @Column({ type: 'numeric' })
-  jumlah: number;
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: 'pending',
+  })
+  status: string; // 'pending' | 'diterima' | 'ditolak'
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;

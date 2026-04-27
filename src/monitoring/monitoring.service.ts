@@ -1,93 +1,113 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Target } from '../target/target.entity';
+import { TargetUniversitas } from '../target/target.entity';
+import { TargetUnit } from '../target/target-unit.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
 import { Indikator } from '../indikator/indikator.entity';
+import { BaselineData } from '../baseline_data/baseline_data.entity';
 
 @Injectable()
 export class MonitoringService {
   constructor(
-    @InjectRepository(Target)
-    private readonly targetRepository: Repository<Target>,
+    @InjectRepository(TargetUniversitas)
+    private readonly targetUniRepository: Repository<TargetUniversitas>,
+    @InjectRepository(TargetUnit)
+    private readonly targetUnitRepository: Repository<TargetUnit>,
     @InjectRepository(Realisasi)
     private readonly realisasiRepository: Repository<Realisasi>,
     @InjectRepository(Indikator)
     private readonly indikatorRepository: Repository<Indikator>,
+    @InjectRepository(BaselineData)
+    private readonly baselineRepository: Repository<BaselineData>,
   ) {}
 
+  private async getBaseline(indikatorId: number, tahun: string, allIndikators: Indikator[]): Promise<number | null> {
+    // Cari jenisData dari indikator atau parent-nya (walk up)
+    let currentId: number | null = indikatorId;
+    while (currentId !== null) {
+      const ind = allIndikators.find((i) => i.id === currentId);
+      if (!ind) break;
+      if (ind.jenisData) {
+        const bl = await this.baselineRepository.findOne({ where: { jenisData: ind.jenisData, tahun } });
+        if (bl) return Number(bl.jumlah);
+      }
+      currentId = ind.parentId ?? null;
+    }
+    return null;
+  }
+
   /**
-   * Returns aggregated progress monitoring focused on Level 0 indicators.
-   * Target Fakultas and Realisasi are summed from all child indicators (Level 1).
+   * Progress monitoring level 0.
+   * Response mencakup persentase target, nilai absolut, dan persentase realisasi aktual.
    */
   async getAggregatedProgress(tahun: string, jenis: string) {
-    // 1. Get all indicators level 0 filtered by jenis (IKU/PK)
     const level0Indikators = await this.indikatorRepository.find({
       where: { level: 0, jenis },
       order: { kode: 'ASC' },
     });
 
+    const allIndikators = await this.indikatorRepository.find();
     const results: any[] = [];
 
     for (const l0 of level0Indikators) {
-      // 2. Get Target Universitas and Tenggat from Level 0 target record
-      const l0Target = await this.targetRepository.findOne({
-        where: { indikatorId: l0.id, tahun },
-      });
+      const uniTarget = await this.targetUniRepository.findOne({ where: { indikatorId: l0.id, tahun } });
+      const baseline = await this.getBaseline(l0.id, tahun, allIndikators);
 
-      // 3. Get all Level 1 children
-      const level1Children = await this.indikatorRepository.find({
-        where: { parentId: l0.id, level: 1 },
-      });
+      // Target absolut = persentase × baseline / 100
+      const persentaseTarget = uniTarget ? Number(uniTarget.persentase) : 0;
+      const targetAbsolut = baseline != null ? Math.round((persentaseTarget / 100) * baseline) : null;
 
-      let sumTargetFakultas = 0;
+      // Akumulasi dari level 1 children
+      const level1Children = await this.indikatorRepository.find({ where: { parentId: l0.id, level: 1 } });
+      let sumTargetUnit = 0;
       let sumRealisasi = 0;
 
       for (const l1 of level1Children) {
-        // Sum Target Fakultas for each child
-        const l1Target = await this.targetRepository.findOne({
-          where: { indikatorId: l1.id, tahun },
-        });
-        if (l1Target) {
-          sumTargetFakultas += Number(l1Target.targetFakultas || 0);
-        }
+        const unitTargets = await this.targetUnitRepository.find({ where: { indikatorId: l1.id, tahun } });
+        sumTargetUnit += unitTargets.reduce((s, t) => s + Number(t.nilaiTarget || 0), 0);
 
-        // Sum Realisasi for each child
-        const l1Realisasi = await this.realisasiRepository.find({
-          where: { indikatorId: l1.id, tahun },
-        });
-        sumRealisasi += l1Realisasi.reduce((sum, r) => sum + Number(r.realisasiAngka), 0);
+        const l1Realisasi = await this.realisasiRepository.find({ where: { indikatorId: l1.id, tahun } });
+        sumRealisasi += l1Realisasi.reduce((s, r) => s + Number(r.realisasiAngka), 0);
       }
 
-      const status = sumRealisasi >= sumTargetFakultas && sumTargetFakultas > 0 ? 'Done' : 'Proses';
+      // Persentase realisasi aktual = (realisasi / baseline) × 100
+      const persentaseRealisasi = baseline != null && baseline > 0
+        ? Math.round((sumRealisasi / baseline) * 100 * 10) / 10
+        : null;
+
+      const tercapai = persentaseRealisasi != null
+        ? persentaseRealisasi >= persentaseTarget
+        : sumRealisasi >= sumTargetUnit && sumTargetUnit > 0;
 
       results.push({
         id: l0.id,
         kode: l0.kode,
         nama: l0.nama,
-        targetUniversitas: l0Target ? Number(l0Target.targetUniversitas || 0) : 0,
-        targetFakultas: sumTargetFakultas,
+        // Data target universitas (persentase)
+        persentaseTarget,
+        targetAbsolut,       // nilaiAbsolut = persentase × baseline / 100
+        baseline,            // jumlah data dasar (misal: 500 lulusan)
+        // Data akumulasi unit
+        targetUnit: sumTargetUnit,
         realisasi: sumRealisasi,
-        tenggat: l0Target?.tenggat || '-',
-        status: status,
-        // Chart point: progress calculation (0-100)
-        progress: sumTargetFakultas > 0 ? Math.min(100, Math.floor((sumRealisasi / sumTargetFakultas) * 100)) : 0,
-        // User requested binary status for chart before, but for table he wants "Done/Proses".
-        // I will provide "chartProgress" specifically for the line chart (100 or 0).
-        chartProgress: sumRealisasi >= sumTargetFakultas && sumTargetFakultas > 0 ? 100 : 0,
+        // Persentase realisasi aktual terhadap baseline
+        persentaseRealisasi,
+        tenggat: uniTarget?.tenggat || '-',
+        status: tercapai ? 'Done' : 'Proses',
+        // Progress: realisasi vs target absolut (0-100)
+        progress: targetAbsolut != null && targetAbsolut > 0
+          ? Math.min(100, Math.floor((sumRealisasi / targetAbsolut) * 100))
+          : sumTargetUnit > 0 ? Math.min(100, Math.floor((sumRealisasi / sumTargetUnit) * 100)) : 0,
       });
     }
 
-    return {
-      tahun,
-      jenis,
-      data: results,
-    };
+    return { tahun, jenis, data: results };
   }
 
-  async getUnitProgress(unitId: number, tahun: string) {
-    const targets = await this.targetRepository.find({
-      where: { unitId, tahun },
+  async getUnitProgress(roleId: number, tahun: string) {
+    const targets = await this.targetUnitRepository.find({
+      where: { roleId, tahun },
       relations: ['indikator'],
       order: { indikator: { kode: 'ASC' } },
     });
@@ -96,34 +116,26 @@ export class MonitoringService {
 
     for (const target of targets) {
       const realisasiList = await this.realisasiRepository.find({
-        where: { 
-          indikatorId: target.indikatorId, 
-          unitId: target.unitId, 
-          tahun: target.tahun 
+        where: {
+          indikatorId: target.indikatorId,
+          ...(target.roleId ? { roleId: target.roleId } : {}),
+          tahun: target.tahun,
         },
       });
 
-      const totalRealisasi = realisasiList.reduce(
-        (sum, r) => sum + Number(r.realisasiAngka), 
-        0
-      );
-
-      const targetFakultas = Number(target.targetFakultas || 0);
-      const progress = totalRealisasi >= targetFakultas && targetFakultas > 0 ? 100 : 0;
+      const totalRealisasi = realisasiList.reduce((sum, r) => sum + Number(r.realisasiAngka), 0);
+      const nilaiTarget = Number(target.nilaiTarget || 0);
+      const progress = nilaiTarget > 0 ? Math.min(100, Math.floor((totalRealisasi / nilaiTarget) * 100)) : 0;
 
       chartData.push({
-        name: target.indikator?.kode || `IKU ${target.indikatorId}`,
-        target: targetFakultas,
-        realisasi: totalRealisasi,
-        progress: progress,
+        name: target.indikator?.kode || `Indikator ${target.indikatorId}`,
         fullName: target.indikator?.nama || '',
+        nilaiTarget,
+        realisasi: totalRealisasi,
+        progress,
       });
     }
 
-    return {
-      unitId,
-      tahun,
-      data: chartData,
-    };
+    return { roleId, tahun, data: chartData };
   }
 }

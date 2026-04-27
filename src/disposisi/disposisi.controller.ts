@@ -8,33 +8,38 @@ export class DisposisiController {
   @Get()
   find(
     @Query('indikatorId', ParseIntPipe) indikatorId: number,
-    @Query('unitId', ParseIntPipe) unitId: number,
     @Query('tahun') tahun: string,
-    @Query('disposedBy') disposedBy?: string,
+    @Query('fromUserId') fromUserId?: string,
   ) {
-    const db = disposedBy !== undefined ? (disposedBy === 'null' ? null : Number(disposedBy)) : undefined;
-    return this.disposisiService.findByIndikator(indikatorId, unitId, tahun, db);
+    const from = fromUserId !== undefined
+      ? (fromUserId === 'null' ? null : Number(fromUserId))
+      : undefined;
+    return this.disposisiService.findByIndikator(indikatorId, tahun, from);
   }
 
   @Get('received-jumlah')
   async getReceivedJumlah(
-    @Query('assignedTo', ParseIntPipe) assignedTo: number,
+    @Query('toUserId', ParseIntPipe) toUserId: number,
     @Query('indikatorId', ParseIntPipe) indikatorId: number,
-    @Query('unitId', ParseIntPipe) unitId: number,
     @Query('tahun') tahun: string,
   ) {
-    const jumlah = await this.disposisiService.getReceivedJumlah(assignedTo, indikatorId, unitId, tahun);
+    const jumlah = await this.disposisiService.getReceivedJumlah(toUserId, indikatorId, tahun);
     return { jumlah };
   }
 
   @Post()
   upsert(
     @Body('indikatorId') indikatorId: number,
-    @Body('unitId') unitId: number,
     @Body('tahun') tahun: string,
-    @Body('items') items: { assignedTo: number; jumlah: number }[],
-    @Body('disposedBy') disposedBy?: number | null,
+    @Body('items') items: { toUserId: number; jumlahTarget: number }[],
+    @Body('fromUserId') fromUserId?: number | null,
+    @Body('parentId') parentId?: number | null,
   ) {
-    return this.disposisiService.upsertMultiple(indikatorId, unitId, tahun, items, disposedBy);
+    return this.disposisiService.upsertMultiple(indikatorId, tahun, items, fromUserId, parentId);
+  }
+
+  @Get('chain')
+  getChain(@Query('parentId', ParseIntPipe) parentId: number) {
+    return this.disposisiService.findChain(parentId);
   }
 }

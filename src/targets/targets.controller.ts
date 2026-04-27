@@ -10,9 +10,9 @@ export class TargetsController {
     return this.targetsService.getAll();
   }
 
-  @Get('unit/:unitId')
-  getByUnit(@Param('unitId', ParseIntPipe) unitId: number) {
-    return this.targetsService.getTargetDetailByUnit(unitId);
+  @Get('role/:roleId')
+  getByRole(@Param('roleId', ParseIntPipe) roleId: number) {
+    return this.targetsService.getTargetDetailByRole(roleId);
   }
 
   @Get('admin/fik')
@@ -31,75 +31,102 @@ export class TargetsController {
   }
 
   @Get('iku-pk')
-  getIkuPk(@Query('unitId', ParseIntPipe) unitId: number, @Query('userId') userId?: string) {
-    return this.targetsService.getIkuPk(unitId, userId ? Number(userId) : undefined);
+  getIkuPk(@Query('roleId', ParseIntPipe) roleId: number, @Query('userId') userId?: string) {
+    return this.targetsService.getIkuPk(roleId, userId ? Number(userId) : undefined);
   }
 
   @Get('pimpinan-validasi')
-  getPimpinanValidasi(@Query('unitId', ParseIntPipe) unitId: number) {
-    return this.targetsService.getForPimpinanValidasi(unitId);
+  getPimpinanValidasi(@Query('roleId', ParseIntPipe) roleId: number) {
+    return this.targetsService.getForPimpinanValidasi(roleId);
   }
 
   @Get('pending-fakultas')
-  getPendingFakultas(@Query('unitId', ParseIntPipe) unitId: number) {
-    return this.targetsService.getPendingFakultas(unitId);
+  getPendingFakultas(@Query('roleId', ParseIntPipe) roleId: number) {
+    return this.targetsService.getPendingFakultas(roleId);
   }
 
   @Get('target-items')
   getTargetItems(
-    @Query('unitId', ParseIntPipe) unitId: number,
+    @Query('roleId', ParseIntPipe) roleId: number,
     @Query('rootIndikatorId', ParseIntPipe) rootIndikatorId: number,
     @Query('tahun') tahun: string,
   ) {
-    return this.targetsService.getTargetItemsByRoot(unitId, rootIndikatorId, tahun);
+    return this.targetsService.getTargetItemsByRoot(roleId, rootIndikatorId, tahun);
   }
 
   @Patch(':id/target-fakultas')
   inputTargetFakultas(
     @Param('id', ParseIntPipe) id: number,
-    @Body('targetUniversitas') targetUniversitas: number,
+    @Body('nilaiTarget') nilaiTarget: number,
   ) {
-    return this.targetsService.inputTargetFakultas(id, targetUniversitas);
+    return this.targetsService.inputTargetFakultas(id, nilaiTarget);
   }
 
   @Post('submit-fakultas')
-  submitFakultas(
-    @Body() body: { items: { targetId: number; targetUniversitas: number }[] },
-  ) {
+  submitFakultas(@Body() body: { items: { targetId: number; targetUniversitas: number }[] }) {
     return this.targetsService.submitTargetFakultas(body.items);
   }
 
   @Post('disposisi')
   disposisi(
     @Body('indikatorId') indikatorId: number,
-    @Body('unitId') unitId: number,
+    @Body('roleId') roleId: number,
     @Body('tahun') tahun: string,
     @Body('assignedTo') assignedTo: number,
   ) {
-    return this.targetsService.disposisi(indikatorId, unitId, tahun, assignedTo);
+    return this.targetsService.disposisi(indikatorId, roleId, tahun, assignedTo);
   }
 
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body('status') status: string,
-    @Body('assignedTo') assignedTo?: number,
   ) {
-    return this.targetsService.updateStatus(id, status, assignedTo);
+    return this.targetsService.updateStatus(id, status);
   }
 
   @Post()
-  create(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas?: number | null }) {
+  create(@Body() body: { indikatorId: number; roleId?: number; tahun: string; nilai?: number | null }) {
     return this.targetsService.create(body);
   }
 
   @Post('upsert-target-universitas')
-  upsertTargetUniversitas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetUniversitas: number; tenggat?: string }) {
-    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.unitId, body.tahun, body.targetUniversitas, body.tenggat);
+  upsertTargetUniversitas(@Body() body: { indikatorId: number; roleId: number; tahun: string; persentase: number; tenggat?: string }) {
+    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.roleId, body.tahun, body.persentase, body.tenggat);
   }
 
   @Post('upsert-target-fakultas')
-  upsertTargetFakultas(@Body() body: { indikatorId: number; unitId: number; tahun: string; targetFakultas: number }) {
-    return this.targetsService.upsertTargetFakultas(body.indikatorId, body.unitId, body.tahun, body.targetFakultas);
+  upsertTargetFakultas(@Body() body: { indikatorId: number; roleId: number; tahun: string; targetFakultas: number }) {
+    return this.targetsService.upsertTargetFakultas(body.indikatorId, body.roleId, body.tahun, body.targetFakultas);
+  }
+
+  @Get('for-validation')
+  getForValidation(
+    @Query('roleId') roleId?: string,
+    @Query('tahun') tahun?: string,
+    @Query('statusValidasi') statusValidasi?: string,
+  ) {
+    return this.targetsService.getForValidation(roleId ? Number(roleId) : undefined, tahun, statusValidasi);
+  }
+
+  @Get('master-skp')
+  getMasterSKP(@Query('tahun') tahun?: string, @Query('roleId') roleId?: string) {
+    return this.targetsService.getMasterSKP(tahun, roleId ? Number(roleId) : undefined);
+  }
+
+  @Patch('master-skp/:userId/status')
+  updateUserSKPStatus(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() body: { status: 'approved' | 'rejected'; tahun?: string },
+  ) {
+    return this.targetsService.updateUserSKPStatus(userId, body.status, body.tahun);
+  }
+
+  @Patch(':id/validation-status')
+  updateValidationStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { status: 'pending' | 'approved' | 'rejected'; catatanAdmin?: string },
+  ) {
+    return this.targetsService.updateValidationStatus(id, body.status, body.catatanAdmin);
   }
 }

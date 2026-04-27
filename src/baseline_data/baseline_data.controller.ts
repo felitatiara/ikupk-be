@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
 import { BaselineDataService } from './baseline_data.service';
 import { BaselineData } from './baseline_data.entity';
 
@@ -7,37 +7,38 @@ export class BaselineDataController {
   constructor(private readonly baselineDataService: BaselineDataService) {}
 
   @Get()
-  async findAll(
+  findAll(
     @Query('jenisData') jenisData?: string,
-    @Query('unitId') unitId?: string,
     @Query('tahun') tahun?: string,
   ): Promise<BaselineData[] | BaselineData | null> {
     if (jenisData && tahun) {
       return this.baselineDataService.findByJenisDataAndTahun(jenisData, tahun);
     }
-    if (jenisData && unitId) {
-      return this.baselineDataService.findByJenisDataAndUnit(jenisData, Number(unitId));
-    }
-    return this.baselineDataService.findAll();
+    return this.baselineDataService.findAll(tahun);
   }
 
-  @Get('unit/:unitId')
-  async findByUnit(@Param('unitId') unitId: number): Promise<BaselineData[]> {
-    return this.baselineDataService.findByUnit(unitId);
+  @Post('upsert')
+  upsert(
+    @Body() body: { jenisData: string; tahun: string; jumlah: number; keterangan?: string },
+  ) {
+    return this.baselineDataService.upsert(body);
   }
 
   @Post()
-  async create(@Body() data: Partial<BaselineData>): Promise<BaselineData> {
+  create(@Body() data: Partial<BaselineData>): Promise<BaselineData> {
     return this.baselineDataService.create(data);
   }
 
   @Put(':id')
-  async update(@Param('id') id: number, @Body() data: Partial<BaselineData>): Promise<BaselineData | null> {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: Partial<BaselineData>,
+  ): Promise<BaselineData | null> {
     return this.baselineDataService.update(id, data);
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: number): Promise<void> {
+  delete(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.baselineDataService.delete(id);
   }
 }

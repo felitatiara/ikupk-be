@@ -21,15 +21,12 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  role?: string;
-
-  @IsOptional()
-  @IsString()
   jenis?: string;
 
+  // Ganti primary role user
   @IsOptional()
   @IsInt()
-  unitId?: number | null;
+  roleId?: number | null;
 
   @IsOptional()
   @IsInt()

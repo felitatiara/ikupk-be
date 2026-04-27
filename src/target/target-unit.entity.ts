@@ -7,19 +7,20 @@ import {
   Unique,
 } from 'typeorm';
 import { Indikator } from '../indikator/indikator.entity';
+import { Role } from '../roles/role.entity';
 import { User } from '../users/user.entity';
 
 /**
- * Target persentase yang ditetapkan oleh Superadmin untuk setiap IKU/PK level 0 per tahun.
- * Nilai absolut dihitung saat query: persentase × baseline_data.jumlah / 100
+ * Target yang ditetapkan per unit/role untuk indikator level 1/2/3.
+ * Merepresentasikan komitmen tiap unit terhadap indikator kinerja.
  */
-@Entity('target_universitas')
-@Unique(['indikatorId', 'tahun'])
-export class TargetUniversitas {
+@Entity('target_unit')
+@Unique(['indikatorId', 'roleId', 'tahun'])
+export class TargetUnit {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  // Hanya boleh indikator level 0
+  // Indikator level 1/2/3 yang menjadi tanggung jawab unit ini
   @Column({ name: 'indikator_id', type: 'int' })
   indikatorId!: number;
 
@@ -27,15 +28,25 @@ export class TargetUniversitas {
   @JoinColumn({ name: 'indikator_id' })
   indikator!: Indikator;
 
+  @Column({ name: 'role_id', type: 'int' })
+  roleId!: number;
+
+  @ManyToOne(() => Role, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'role_id' })
+  role!: Role;
+
   @Column({ type: 'varchar', length: 4 })
   tahun!: string;
 
-  // Target dalam persen (0-100), misal: 80 berarti 80%
-  @Column({ type: 'numeric' })
-  persentase!: number;
+  @Column({ name: 'nilai_target', type: 'numeric', nullable: true })
+  nilaiTarget!: number | null;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
-  tenggat!: string | null;
+  // 'draft' | 'diajukan' | 'disetujui' | 'ditolak'
+  @Column({ name: 'status_validasi', type: 'varchar', length: 30, default: 'draft' })
+  statusValidasi!: string;
+
+  @Column({ type: 'text', nullable: true })
+  catatan!: string | null;
 
   @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy!: number | null;

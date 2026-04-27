@@ -1,14 +1,18 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { TargetsService } from './targets.service';
 import { TargetsController } from './targets.controller';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { Indikator } from '../indikator/indikator.entity';
-import { Target } from '../target/target.entity';
-import { Unit } from '../unit/unit.entity';
+import { TargetUniversitas } from '../target/target.entity';
+import { TargetUnit } from '../target/target-unit.entity';
+import { Role } from '../roles/role.entity';
+import { UserRole } from '../roles/user-role.entity';
 import { User } from '../users/user.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
+import { Realisasi } from '../realisasi/realisasi.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Indikator, Target, Unit, User])],
+  imports: [TypeOrmModule.forFeature([Indikator, TargetUniversitas, TargetUnit, Role, UserRole, User, Disposisi, Realisasi])],
   providers: [TargetsService],
   controllers: [TargetsController],
   exports: [TargetsService],

@@ -1,12 +1,12 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
-import { Unit } from '../unit/unit.entity';
 
 @Entity('indikator')
-@Unique(['jenis', 'kode'])
+@Unique(['jenis', 'kode', 'tahun'])
 export class Indikator {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  // 'IKU' | 'PK'
   @Column({ length: 10 })
   jenis!: string;
 
@@ -16,6 +16,10 @@ export class Indikator {
   @Column({ type: 'text' })
   nama!: string;
 
+  // Tahun berlaku indikator ini — indikator bisa beda struktur tiap tahun
+  @Column({ type: 'varchar', length: 4, default: '2025' })
+  tahun!: string;
+
   @Column({ name: 'parent_id', type: 'int', nullable: true })
   parentId!: number | null;
 
@@ -23,21 +27,13 @@ export class Indikator {
   @JoinColumn({ name: 'parent_id' })
   parent!: Indikator;
 
-  @Column({ name: 'unit_id', type: 'int', nullable: true })
-  unitId!: number | null;
-
-  @ManyToOne(() => Unit, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'unit_id' })
-  unit!: Unit;
-
-  @Column({ type: 'int', default: 1 })
+  // IKU: level 0/1/2  |  PK: level 0/1/2/3
+  @Column({ type: 'int', default: 0 })
   level!: number;
 
+  // Digunakan untuk mencocokkan baseline_data.jenisData
   @Column({ name: 'jenis_data', type: 'varchar', length: 50, nullable: true })
   jenisData!: string | null;
-
-  @Column({ name: 'is_pk_berbasis_iku', type: 'boolean', default: false })
-  isPkBerbasisIku!: boolean;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt!: Date;

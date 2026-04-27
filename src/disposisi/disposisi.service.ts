@@ -10,49 +10,52 @@ export class DisposisiService {
     private disposisiRepo: Repository<Disposisi>,
   ) {}
 
-  async findByIndikator(indikatorId: number, unitId: number, tahun: string, disposedBy?: number | null): Promise<Disposisi[]> {
-    const where: any = { indikatorId, unitId, tahun };
-    if (disposedBy !== undefined) {
-      where.disposedBy = disposedBy;
+  async findByIndikator(
+    indikatorId: number,
+    tahun: string,
+    fromUserId?: number | null,
+  ): Promise<Disposisi[]> {
+    const where: any = { indikatorId, tahun };
+    if (fromUserId !== undefined) {
+      where.fromUserId = fromUserId;
     }
     return this.disposisiRepo.find({
       where,
-      relations: ['assignedUser'],
+      relations: ['toUser', 'toUser.userRoles', 'toUser.userRoles.role', 'parent'],
       order: { createdAt: 'ASC' },
     });
   }
 
   /**
-   * Mengambil total jumlah yang diterima user tertentu untuk indikator ini.
-   * Jika disposedBy null → memeriksa disposisi dari pimpinan (row dengan disposedBy IS NULL).
-   * Jika disposedBy ada → memeriksa disposisi dari user tersebut.
+   * Total jumlahTarget yang diterima toUserId untuk indikator ini.
+   * Dipakai untuk validasi agar re-disposisi tidak melebihi yang diterima.
    */
   async getReceivedJumlah(
-    assignedTo: number,
+    toUserId: number,
     indikatorId: number,
-    unitId: number,
     tahun: string,
   ): Promise<number> {
-    // Ambil semua disposisi yang diterima oleh assignedTo untuk indikator ini
     const received = await this.disposisiRepo.find({
-      where: { assignedTo, indikatorId, unitId, tahun },
+      where: { toUserId, indikatorId, tahun },
     });
-    return received.reduce((sum, d) => sum + Number(d.jumlah), 0);
+    return received.reduce((sum, d) => sum + Number(d.jumlahTarget), 0);
   }
 
+  /**
+   * Simpan/update batch disposisi dari satu user ke banyak user.
+   * Disposisi lama dari fromUserId untuk indikator+tahun yang sama akan dihapus dulu.
+   */
   async upsertMultiple(
     indikatorId: number,
-    unitId: number,
     tahun: string,
-    items: { assignedTo: number; jumlah: number }[],
-    disposedBy?: number | null,
+    items: { toUserId: number; jumlahTarget: number }[],
+    fromUserId?: number | null,
+    parentId?: number | null,
   ): Promise<Disposisi[]> {
-    // Jika disposedBy diisi, pastikan total re-disposisi tidak melebihi
-    // jumlah yang diterima disposedBy dari tahap sebelumnya.
-    if (disposedBy) {
-      const received = await this.getReceivedJumlah(disposedBy, indikatorId, unitId, tahun);
+    if (fromUserId) {
+      const received = await this.getReceivedJumlah(fromUserId, indikatorId, tahun);
       if (received > 0) {
-        const totalRequested = items.reduce((sum, i) => sum + i.jumlah, 0);
+        const totalRequested = items.reduce((sum, i) => sum + i.jumlahTarget, 0);
         if (totalRequested > received) {
           throw new BadRequestException(
             `Total disposisi (${totalRequested}) melebihi jumlah yang Anda terima (${received})`,
@@ -61,35 +64,46 @@ export class DisposisiService {
       }
     }
 
-    // Hapus disposisi lama dari disposedBy ini untuk indikator ini
-    // Memastikan tidak ada data ganda meskipun unitId berubah
-    const deleteWhere: any = { indikatorId, tahun };
-    if (disposedBy) {
-      deleteWhere.disposedBy = disposedBy;
-    } else {
-      deleteWhere.disposedBy = null as any;
-    }
-    
-    console.log(`DisposisiService: Deleting old records for indikator ${indikatorId}, year ${tahun}, disposedBy ${disposedBy}`);
-    await this.disposisiRepo.delete(deleteWhere);
+    const deleteQb = this.disposisiRepo
+      .createQueryBuilder()
+      .delete()
+      .where('indikator_id = :indikatorId', { indikatorId })
+      .andWhere('tahun = :tahun', { tahun });
 
-    // Simpan yang baru
+    if (fromUserId) {
+      deleteQb.andWhere('from_user_id = :fromUserId', { fromUserId });
+    } else {
+      deleteQb.andWhere('from_user_id IS NULL');
+    }
+
+    await deleteQb.execute();
+
     const entities = items
-      .filter((item) => item.jumlah > 0)
+      .filter((item) => item.jumlahTarget > 0)
       .map((item) =>
         this.disposisiRepo.create({
           indikatorId,
-          unitId,
           tahun,
-          assignedTo: item.assignedTo,
-          jumlah: item.jumlah,
-          disposedBy: disposedBy ?? null,
+          toUserId: item.toUserId,
+          jumlahTarget: item.jumlahTarget,
+          fromUserId: fromUserId ?? null,
+          parentId: parentId ?? null,
+          status: 'diterima',
         }),
       );
 
     if (entities.length === 0) return [];
-    console.log(`DisposisiService: Saving ${entities.length} items for indikator ${indikatorId}, unit ${unitId}, year ${tahun}`);
     return this.disposisiRepo.save(entities);
+  }
+
+  /**
+   * Ambil seluruh rantai disposisi di bawah sebuah parentId (untuk rollup capaian).
+   */
+  async findChain(parentId: number): Promise<Disposisi[]> {
+    return this.disposisiRepo.find({
+      where: { parentId },
+      relations: ['toUser', 'toUser.userRoles', 'toUser.userRoles.role'],
+    });
   }
 
   async remove(id: number): Promise<void> {

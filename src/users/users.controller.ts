@@ -23,9 +23,14 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  @Get('by-unit')
-  findByUnit(@Query('unitId', ParseIntPipe) unitId: number) {
-    return this.usersService.findByUnit(unitId);
+  @Get('roles')
+  findAllRoles() {
+    return this.usersService.findAllRoles();
+  }
+
+  @Get('by-role')
+  findByRole(@Query('roleId', ParseIntPipe) roleId: number) {
+    return this.usersService.findByRole(roleId);
   }
 
   @Get('related')

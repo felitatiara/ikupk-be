@@ -1,19 +1,23 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
 
 @Entity('baseline_data')
+@Unique(['jenisData', 'tahun'])
 export class BaselineData {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ name: 'unit_id', type: 'int', nullable: true })
-  unitId!: number;
+  // Cocok dengan indikator.jenisData untuk menentukan baseline yang dipakai
+  @Column({ name: 'jenis_data', type: 'varchar', length: 50 })
+  jenisData!: string;
 
-  @Column({ name: 'jenis_data', type: 'varchar', length: 50, nullable: true })
-  jenisData!: string | null;
-
-  @Column({ name: 'jumlah', type: 'int', nullable: true })
-  jumlah!: number | null;
+  // Jumlah aktual (denominatorpersentase), misal: 500 lulusan, 150 dosen
+  @Column({ name: 'jumlah', type: 'int' })
+  jumlah!: number;
 
   @Column({ name: 'tahun', type: 'varchar', length: 4 })
   tahun!: string;
+
+  // Keterangan opsional, misal: "Total lulusan wisuda 2024"
+  @Column({ name: 'keterangan', type: 'text', nullable: true })
+  keterangan!: string | null;
 }

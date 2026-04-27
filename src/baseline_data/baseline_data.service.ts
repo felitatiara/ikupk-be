@@ -10,20 +10,32 @@ export class BaselineDataService {
     private readonly baselineDataRepository: Repository<BaselineData>,
   ) {}
 
-  async findAll(): Promise<BaselineData[]> {
+  async findAll(tahun?: string): Promise<BaselineData[]> {
+    if (tahun) return this.baselineDataRepository.find({ where: { tahun } });
     return this.baselineDataRepository.find();
   }
 
-  async findByUnit(unitId: number): Promise<BaselineData[]> {
-    return this.baselineDataRepository.find({ where: { unitId } });
-  }
-
-  async findByJenisDataAndUnit(jenisData: string, unitId: number): Promise<BaselineData[]> {
-    return this.baselineDataRepository.find({ where: { jenisData, unitId } });
-  }
-
   async findByJenisDataAndTahun(jenisData: string, tahun: string): Promise<BaselineData | null> {
-    return this.baselineDataRepository.findOne({ where: { jenisData, unitId: 1, tahun } });
+    return this.baselineDataRepository.findOne({ where: { jenisData, tahun } });
+  }
+
+  async upsert(data: { jenisData: string; tahun: string; jumlah: number; keterangan?: string }): Promise<BaselineData> {
+    let existing = await this.baselineDataRepository.findOne({
+      where: { jenisData: data.jenisData, tahun: data.tahun },
+    });
+    if (existing) {
+      existing.jumlah = data.jumlah;
+      if (data.keterangan !== undefined) existing.keterangan = data.keterangan ?? null;
+      return this.baselineDataRepository.save(existing);
+    }
+    return this.baselineDataRepository.save(
+      this.baselineDataRepository.create({
+        jenisData: data.jenisData,
+        tahun: data.tahun,
+        jumlah: data.jumlah,
+        keterangan: data.keterangan ?? null,
+      }),
+    );
   }
 
   async create(data: Partial<BaselineData>): Promise<BaselineData> {

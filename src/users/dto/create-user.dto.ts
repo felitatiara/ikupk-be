@@ -18,17 +18,18 @@ export class CreateUserDto {
   @Length(4, 100)
   password: string;
 
-  @IsNotEmpty()
-  @IsString()
-  role: string;
-
   @IsOptional()
   @IsString()
   jenis?: string;
 
+  // ID role utama yang akan menjadi is_primary = true
   @IsOptional()
   @IsInt()
-  unitId?: number | null;
+  roleId?: number | null;
+
+  // Tambahan role (selain primary), opsional
+  @IsOptional()
+  extraRoleIds?: number[];
 
   @IsOptional()
   @IsInt()

@@ -1,6 +1,4 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
-import { User } from '../users/user.entity';
-import { Target } from '../target/target.entity';
 
 @Entity('unit')
 export class Unit {
@@ -22,10 +20,4 @@ export class Unit {
 
   @OneToMany(() => Unit, (unit) => unit.parent)
   children: Unit[];
-
-  @OneToMany(() => User, (user) => user.unit)
-  users: User[];
-
-  @OneToMany(() => Target, (target) => target.unit)
-  targets: Target[];
 }
