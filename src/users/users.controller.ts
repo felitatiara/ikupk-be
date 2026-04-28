@@ -44,6 +44,16 @@ export class UsersController {
     return { hasRelated: has };
   }
 
+  @Get('dosen-by-unit')
+  findDosenByUnit(@Query('unitNama') unitNama: string) {
+    return this.usersService.findDosenByUnit(unitNama);
+  }
+
+  @Get('by-level')
+  findByRoleLevel(@Query('level', ParseIntPipe) level: number) {
+    return this.usersService.findByRoleLevel(level);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);

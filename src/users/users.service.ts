@@ -155,24 +155,77 @@ export class UsersService {
     await this.usersRepository.delete(id);
   }
 
-  async findByRole(roleId: number): Promise<User[]> {
-    const userRoles = await this.userRoleRepo.find({
-      where: { roleId },
-      relations: ['user'],
-    });
-    return userRoles.map((ur) => ur.user).filter(Boolean);
+  private mapUserDto(user: User): any {
+    const primaryRole = user.userRoles?.find((ur) => ur.isPrimary) ?? user.userRoles?.[0];
+    return {
+      id: user.id,
+      nip: user.nip,
+      nama: user.nama,
+      email: user.email,
+      jenis: user.jenis,
+      role: primaryRole?.role?.name ?? '',
+      roleId: primaryRole?.roleId ?? null,
+      roleLevel: primaryRole?.role?.level ?? null,
+      unitNama: primaryRole?.role?.unitNama ?? null,
+    };
   }
 
-  async findRelatedUsersFor(userId: number): Promise<User[]> {
+  async findByRole(roleId: number): Promise<any[]> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { roleId },
+      relations: ['user', 'user.userRoles', 'user.userRoles.role'],
+    });
+    return userRoles
+      .map((ur) => ur.user)
+      .filter(Boolean)
+      .map((u) => this.mapUserDto(u));
+  }
+
+  async findRelatedUsersFor(userId: number): Promise<any[]> {
     const relations = await this.userRelationRepo.find({
       where: { parentId: userId },
       relations: ['user', 'user.userRoles', 'user.userRoles.role'],
     });
-    return relations.map((r) => r.user).filter(Boolean) as User[];
+    return relations
+      .map((r) => r.user)
+      .filter(Boolean)
+      .map((u) => this.mapUserDto(u as User));
   }
 
   async hasRelatedUsers(userId: number): Promise<boolean> {
     const count = await this.userRelationRepo.count({ where: { parentId: userId } });
     return count > 0;
+  }
+
+  async findByRoleLevel(level: number): Promise<any[]> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { isPrimary: true, role: { level } },
+      relations: ['user', 'user.userRoles', 'user.userRoles.role', 'role'],
+    });
+    const seen = new Set<number>();
+    const result: any[] = [];
+    for (const ur of userRoles) {
+      if (ur.user && !seen.has(ur.user.id)) {
+        seen.add(ur.user.id);
+        result.push(this.mapUserDto(ur.user));
+      }
+    }
+    return result;
+  }
+
+  async findDosenByUnit(unitNama: string): Promise<any[]> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { role: { name: 'Dosen', unitNama } },
+      relations: ['user', 'user.userRoles', 'user.userRoles.role', 'role'],
+    });
+    const seen = new Set<number>();
+    const result: any[] = [];
+    for (const ur of userRoles) {
+      if (ur.user && !seen.has(ur.user.id)) {
+        seen.add(ur.user.id);
+        result.push(this.mapUserDto(ur.user));
+      }
+    }
+    return result;
   }
 }

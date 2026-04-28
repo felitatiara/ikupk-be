@@ -8,6 +8,12 @@ import { Indikator } from '../indikator/indikator.entity';
 export class IntegrationService {
   private readonly repoUrl: string;
 
+  /** Map jenis singkatan ke label folder di repository */
+  private readonly jenisLabelMap: Record<string, string> = {
+    IKU: 'Indikator Kinerja Utama',
+    PK: 'Perjanjian Kerja',
+  };
+
   constructor(
     private configService: ConfigService,
     @InjectRepository(Indikator)
@@ -37,9 +43,11 @@ export class IntegrationService {
   }
 
   /**
-   * Ambil file MILIK SENDIRI dari repository di folder bernama sesuai kode indikator.
-   * Contoh: indikator kode "1.1.1" → cari folder "1.1.1" → filter hanya file milik email ini.
-   * Dipakai saat dosen submit realisasi (hanya tampilkan file yang dia upload sendiri).
+   * Ambil file MILIK SENDIRI dari repository.
+   * Alur hierarkis:
+   *   → Folder parent: nama = label jenis (misal "Indikator Kinerja Utama")
+   *   → Sub-folder: nama = "kode nama" (misal "1.1.1 Lulusan Tepat Waktu")
+   *   → Filter: hanya file milik email ini
    */
   async getFilesForIndikator(indikatorId: number, email: string): Promise<{
     indikatorKode: string;
@@ -51,11 +59,13 @@ export class IntegrationService {
       throw new NotFoundException(`Indikator ID ${indikatorId} tidak ditemukan`);
     }
 
+    const jenisLabel = this.jenisLabelMap[indikator.jenis?.toUpperCase()] || indikator.jenis || '';
+
     const allFiles = await this.get<any[]>(
-      `/api/integration/files/search?name=${encodeURIComponent(indikator.kode)}&email=${encodeURIComponent(email)}`,
+      `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}&email=${encodeURIComponent(email)}`,
     );
 
-    // Filter hanya file yang di-upload oleh user ini (bukan file dosen lain di folder yang sama)
+    // Filter hanya file yang di-upload oleh user ini
     const ownFiles = allFiles.filter((f) => f.owner?.email === email);
 
     return {
@@ -66,8 +76,7 @@ export class IntegrationService {
   }
 
   /**
-   * Ambil SEMUA file dalam folder indikator tanpa filter pemilik.
-   * Dipakai oleh pimpinan/admin untuk melihat realisasi seluruh dosen pada satu indikator.
+   * Ambil SEMUA file dalam folder indikator tanpa filter pemilik (untuk pimpinan/admin).
    */
   async getAllFilesForIndikator(indikatorId: number, email: string): Promise<{
     indikatorKode: string;
@@ -79,8 +88,10 @@ export class IntegrationService {
       throw new NotFoundException(`Indikator ID ${indikatorId} tidak ditemukan`);
     }
 
+    const jenisLabel = this.jenisLabelMap[indikator.jenis?.toUpperCase()] || indikator.jenis || '';
+
     const files = await this.get<any[]>(
-      `/api/integration/files/search?name=${encodeURIComponent(indikator.kode)}&email=${encodeURIComponent(email)}`,
+      `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}&email=${encodeURIComponent(email)}`,
     );
 
     return {

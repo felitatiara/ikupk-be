@@ -256,16 +256,19 @@ export class IndikatorService {
       const uniTarget = await this.targetUniRepo.findOne({ where: { indikatorId: root.id, tahun } });
       const rootBaseline = await this.findBaselineForIndikator(root.id, tahun, all);
 
+      const storedTarget = uniTarget ? Number(uniTarget.persentase) : null;
+      // If a baseline exists use percentage formula; otherwise treat stored value as absolute
+      const targetAbsolut = storedTarget !== null
+        ? (rootBaseline ? Math.round((storedTarget / 100) * rootBaseline) : storedTarget)
+        : null;
+
       result.push({
         id: root.id,
         kode: root.kode,
         nama: root.nama,
         tahun: root.tahun,
-        persentaseTarget: uniTarget ? Number(uniTarget.persentase) : null,
-        // Nilai absolut: persentase × baseline / 100
-        targetAbsolut: uniTarget && rootBaseline
-          ? Math.round((Number(uniTarget.persentase) / 100) * rootBaseline)
-          : null,
+        persentaseTarget: storedTarget,
+        targetAbsolut,
         tenggat: uniTarget?.tenggat ?? null,
         baselineJumlah: rootBaseline,
         subIndikators,

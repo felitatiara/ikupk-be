@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe, UseGuards, Req } from '@nestjs/common';
 import { RealisasiService } from './realisasi.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('realisasi')
 export class RealisasiController {
@@ -28,17 +29,31 @@ export class RealisasiController {
     return this.realisasiService.create(body);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('from-file')
   submitFromFile(
+    @Req() req: any,
     @Body() body: {
       indikatorId: number;
-      roleId: number;
       tahun: string;
       periode: string;
       fileCount: number;
-      userId: number;
+      // userId & roleId diambil otomatis dari JWT token
+      userId?: number;
+      roleId?: number;
     },
   ) {
-    return this.realisasiService.submitFromFile(body);
+    // Prioritaskan userId/roleId dari JWT token; fallback ke body jika masih ada
+    const userId: number = req.user?.id ?? req.user?.sub ?? body.userId;
+    const roleId: number = req.user?.role_id ?? body.roleId;
+    return this.realisasiService.submitFromFile({
+      indikatorId: body.indikatorId,
+      roleId: Number(roleId),
+      tahun: body.tahun,
+      periode: body.periode,
+      fileCount: body.fileCount,
+      userId: Number(userId),
+    });
   }
 }
+
