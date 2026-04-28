@@ -38,21 +38,21 @@ export class RealisasiController {
       tahun: string;
       periode: string;
       fileCount: number;
-      // userId & roleId diambil otomatis dari JWT token
-      userId?: number;
-      roleId?: number;
     },
   ) {
-    // Prioritaskan userId/roleId dari JWT token; fallback ke body jika masih ada
-    const userId: number = req.user?.id ?? req.user?.sub ?? body.userId;
-    const roleId: number = req.user?.role_id ?? body.roleId;
+    const userId: number = req.user?.id;
+    // userRoles is loaded by JwtStrategy via eager relations; pick primary
+    const primaryUserRole =
+      req.user?.userRoles?.find((ur: any) => ur.isPrimary) ??
+      req.user?.userRoles?.[0];
+    const roleId: number | null = primaryUserRole?.roleId ?? null;
     return this.realisasiService.submitFromFile({
       indikatorId: body.indikatorId,
-      roleId: Number(roleId),
+      roleId,
       tahun: body.tahun,
       periode: body.periode,
       fileCount: body.fileCount,
-      userId: Number(userId),
+      userId,
     });
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Realisasi } from './realisasi.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { TargetUnit } from '../target/target-unit.entity';
@@ -49,7 +49,7 @@ export class RealisasiService {
 
   async submitFromFile(data: {
     indikatorId: number;
-    roleId: number;
+    roleId: number | null;
     tahun: string;
     periode: string;
     fileCount: number;
@@ -63,8 +63,10 @@ export class RealisasiService {
     const { indikatorId, roleId, tahun, periode, fileCount, userId } = data;
 
     // Upsert realisasi user ini
+    // Gunakan IsNull() untuk kolom nullable agar TypeORM menghasilkan WHERE role_id IS NULL
+    const roleIdWhere = roleId !== null ? roleId : IsNull();
     let existing = await this.realisasiRepository.findOne({
-      where: { indikatorId, roleId, tahun, periode, createdBy: userId },
+      where: { indikatorId, roleId: roleIdWhere as any, tahun, periode, createdBy: userId },
     });
     if (existing) {
       existing.realisasiAngka = fileCount;
@@ -83,7 +85,10 @@ export class RealisasiService {
       );
     }
 
-    const targetUnit = await this.targetUnitRepository.findOne({ where: { indikatorId, roleId, tahun } });
+    // TargetUnit.roleId adalah non-nullable; skip jika roleId null
+    const targetUnit = roleId !== null
+      ? await this.targetUnitRepository.findOne({ where: { indikatorId, roleId, tahun } })
+      : null;
     const disposisiList = await this.disposisiRepository.find({
       where: { indikatorId, toUserId: userId, tahun },
       relations: ['toUser'],

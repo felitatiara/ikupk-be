@@ -37,7 +37,8 @@ export class IntegrationService {
   private appendFileUrls(file: any): any {
     return {
       ...file,
-      preview_url: `${this.repoUrl}/api/files/${file.id}/preview`,
+      // Preview via public integration endpoint (no auth required — UUID is unguessable)
+      preview_url: `${this.repoUrl}/api/integration/preview/${file.id}`,
       download_url: `${this.repoUrl}/api/files/${file.id}/download`,
     };
   }
