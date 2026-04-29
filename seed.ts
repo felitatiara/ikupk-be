@@ -18,7 +18,7 @@ const AppDataSource = new DataSource({
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'iku_pk',
   entities: [User, Role, UserRole, UserRelation, Indikator, BaselineData, TargetUniversitas],
-  synchronize: false,
+  synchronize: true,
 });
 
 async function upsertRole(repo: any, data: { name: string; unitNama: string; level: number }) {
@@ -64,7 +64,7 @@ async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: str
 }
 
 async function seed() {
-  console.log('Starting safe seeding (Upsert mode)...');
+  console.log('Starting seed (schema reset mode)...');
   await AppDataSource.initialize();
 
   const userRepo = AppDataSource.getRepository(User);
