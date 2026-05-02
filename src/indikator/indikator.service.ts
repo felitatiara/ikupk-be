@@ -1,11 +1,13 @@
 import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Indikator } from './indikator.entity';
 import { TargetUniversitas } from '../target/target.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
+import { Realisasi } from '../realisasi/realisasi.entity';
+import { UserRelation } from '../users/user_relation.entity';
 
 const MAX_LEVEL: Record<string, number> = { IKU: 2, PK: 3 };
 
@@ -26,6 +28,10 @@ export class IndikatorService {
     private baselineRepo: Repository<BaselineData>,
     @InjectRepository(Disposisi)
     private disposisiRepo: Repository<Disposisi>,
+    @InjectRepository(Realisasi)
+    private realisasiRepo: Repository<Realisasi>,
+    @InjectRepository(UserRelation)
+    private userRelationRepo: Repository<UserRelation>,
   ) {}
 
   async findAll(tahun?: string): Promise<Indikator[]> {
@@ -279,14 +285,8 @@ export class IndikatorService {
   }
 
   async findGroupedForUser(jenis: string, tahun: string, userId: number, roleId: number) {
-    const allRecords = await this.disposisiRepo.find();
-    console.log('DIAGNOSTIC: All Disposisi Records in DB:', JSON.stringify(allRecords, null, 2));
-
     const disposisis = await this.disposisiRepo.find({ where: { toUserId: userId, tahun } });
-    if (disposisis.length === 0) {
-      console.log(`DEBUG findGroupedForUser: No disposisi for userId=${userId}, tahun=${tahun}`);
-      return [];
-    }
+    if (disposisis.length === 0) return [];
 
     const disposisiByIndikator = new Map<number, number>();
     for (const d of disposisis) {
@@ -301,9 +301,22 @@ export class IndikatorService {
       const filteredSubs: any[] = [];
       for (const sub of group.subIndikators) {
         const isSubAssigned = assignedIndikatorIds.has(sub.id);
-        const filteredChildren = sub.children
-          .filter((c: any) => assignedIndikatorIds.has(c.id))
-          .map((c: any) => ({ ...c, disposisiJumlah: disposisiByIndikator.get(c.id) ?? null }));
+
+        // level-2 children that are directly assigned
+        const filteredChildren = sub.children.map((c: any) => {
+          const isChildAssigned = assignedIndikatorIds.has(c.id);
+          // level-3 grandchildren that are assigned (PK rincian)
+          const filteredGrandchildren = (c.children ?? [])
+            .filter((gc: any) => assignedIndikatorIds.has(gc.id))
+            .map((gc: any) => ({ ...gc, disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null }));
+
+          if (isChildAssigned) {
+            return { ...c, disposisiJumlah: disposisiByIndikator.get(c.id) ?? null };
+          } else if (filteredGrandchildren.length > 0) {
+            return { ...c, children: filteredGrandchildren };
+          }
+          return null;
+        }).filter(Boolean);
 
         if (isSubAssigned) {
           filteredSubs.push({ ...sub, disposisiJumlah: disposisiByIndikator.get(sub.id) ?? null });
@@ -313,6 +326,60 @@ export class IndikatorService {
       }
       if (filteredSubs.length > 0) {
         filtered.push({ ...group, subIndikators: filteredSubs });
+      }
+    }
+
+    // Collect ALL indikator IDs including PK level-3 grandchildren for realisasi query
+    const allTargetIds = new Set<number>([...assignedIndikatorIds]);
+    for (const group of filtered) {
+      for (const sub of group.subIndikators) {
+        for (const child of (sub.children ?? [])) {
+          for (const gc of (child.children ?? [])) {
+            allTargetIds.add(gc.id);
+          }
+        }
+      }
+    }
+
+    const indikatorIds = [...allTargetIds];
+    const realisasiMap = new Map<number, number>();
+    const validRealisasiMap = new Map<number, number>();
+    if (indikatorIds.length > 0) {
+      const realisasiList = await this.realisasiRepo
+        .createQueryBuilder('r')
+        .where('r.indikator_id IN (:...indIds)', { indIds: indikatorIds })
+        .andWhere('r.created_by = :userId', { userId })
+        .andWhere('r.tahun = :tahun', { tahun })
+        .getMany();
+      for (const r of realisasiList) {
+        realisasiMap.set(r.indikatorId, (realisasiMap.get(r.indikatorId) ?? 0) + Number(r.realisasiAngka));
+        if (r.validFileCount !== null) {
+          validRealisasiMap.set(r.indikatorId, (validRealisasiMap.get(r.indikatorId) ?? 0) + Number(r.validFileCount));
+        }
+      }
+    }
+
+    for (const group of filtered) {
+      for (const sub of group.subIndikators) {
+        // Aggregate level-3 (PK rincian) realisasi up to sub
+        let subReal = realisasiMap.get(sub.id) ?? 0;
+        let subValid: number | null = validRealisasiMap.get(sub.id) ?? null;
+
+        for (const child of (sub.children ?? [])) {
+          child.realisasiJumlah = realisasiMap.get(child.id) ?? 0;
+          child.validRealisasiJumlah = validRealisasiMap.get(child.id) ?? null;
+          for (const gc of (child.children ?? [])) {
+            const gcReal = realisasiMap.get(gc.id) ?? 0;
+            const gcValid = validRealisasiMap.get(gc.id) ?? null;
+            gc.realisasiJumlah = gcReal;
+            gc.validRealisasiJumlah = gcValid;
+            subReal += gcReal;
+            if (gcValid !== null) subValid = (subValid ?? 0) + gcValid;
+          }
+        }
+
+        sub.realisasiJumlah = subReal;
+        sub.validRealisasiJumlah = subValid;
       }
     }
 
@@ -335,6 +402,92 @@ export class IndikatorService {
       });
     }
     return result;
+  }
+
+  /**
+   * Laporan hierarki IKU/PK dengan target dan realisasi untuk export Excel.
+   * Mengembalikan struktur: sasaran (level 0) → subindikator (level 1) → children (level 2+)
+   * Tiap node dilengkapi: nilaiTarget, targetKualitas(%), realisasiKuantitas, realisasiKualitas(%), persenCapaian
+   */
+  async getLaporanWithRealisasi(
+    jenis: string,
+    tahun: string,
+    roleId: number,
+    periode?: string,
+  ): Promise<any[]> {
+    // Ambil struktur hierarki dengan target & baseline yang sudah dihitung
+    const grouped = await this.findGrouped(jenis, tahun, roleId);
+
+    // Ambil semua indikator ID untuk jenis dan tahun ini
+    const allIndikators = await this.indikatorRepository.find({ where: { jenis, tahun } });
+    const allIds = allIndikators.map((i) => i.id);
+
+    // Ambil realisasi untuk semua indikator
+    const realisasiList =
+      allIds.length > 0
+        ? await this.realisasiRepo.find({
+            where: {
+              indikatorId: In(allIds),
+              roleId,
+              tahun,
+              ...(periode ? { periode } : {}),
+            },
+          })
+        : [];
+
+    const realisasiMap = new Map<number, number>();
+    for (const r of realisasiList) {
+      realisasiMap.set(
+        r.indikatorId,
+        (realisasiMap.get(r.indikatorId) ?? 0) + Number(r.realisasiAngka),
+      );
+    }
+
+    // Hitung kualitas (%) dari nilaiTarget / baseline * 100
+    const calcKualitas = (nilai: number | null, baseline: number | null): number | null => {
+      if (!nilai || !baseline || baseline === 0) return null;
+      return Number(((nilai / baseline) * 100).toFixed(1));
+    };
+
+    const enrichNode = (node: any, fallbackBaseline: number | null) => {
+      const bl: number | null = node.baselineJumlah ?? fallbackBaseline;
+      const realisasiKuantitas = realisasiMap.get(node.id) ?? 0;
+      const realisasiKualitas = calcKualitas(realisasiKuantitas, bl);
+      const targetKualitas = calcKualitas(node.nilaiTarget, bl);
+      const persenCapaian =
+        node.nilaiTarget && node.nilaiTarget > 0
+          ? Number(((realisasiKuantitas / node.nilaiTarget) * 100).toFixed(1))
+          : 0;
+      return { ...node, realisasiKuantitas, realisasiKualitas, targetKualitas, persenCapaian };
+    };
+
+    return grouped.map((group) => {
+      const enrichedSubs = (group.subIndikators ?? []).map((sub: any) => {
+        const enrichedSub = enrichNode(sub, group.baselineJumlah);
+        const enrichedChildren = (sub.children ?? []).map((child: any) => {
+          const enrichedChild = enrichNode(child, sub.baselineJumlah ?? group.baselineJumlah);
+          const enrichedL3 = (child.children ?? []).map((l3: any) =>
+            enrichNode(l3, child.baselineJumlah ?? sub.baselineJumlah ?? group.baselineJumlah),
+          );
+          return { ...enrichedChild, children: enrichedL3 };
+        });
+        return { ...enrichedSub, children: enrichedChildren };
+      });
+
+      // Hitung S.D (progres kumulatif sasaran) = total realisasi / targetAbsolut * 100
+      const totalRealisasi = enrichedSubs.reduce((acc: number, sub: any) => {
+        const subVal = sub.realisasiKuantitas > 0
+          ? sub.realisasiKuantitas
+          : sub.children.reduce((a: number, c: any) => a + (c.realisasiKuantitas ?? 0), 0);
+        return acc + subVal;
+      }, 0);
+      const sdPersen =
+        group.targetAbsolut && group.targetAbsolut > 0
+          ? Number(((totalRealisasi / group.targetAbsolut) * 100).toFixed(1))
+          : 0;
+
+      return { ...group, sdPersen, subIndikators: enrichedSubs };
+    });
   }
 
   /** Daftar tahun yang sudah punya indikator (untuk dropdown pilih tahun) */

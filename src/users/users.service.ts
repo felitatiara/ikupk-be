@@ -22,9 +22,41 @@ export class UsersService {
     private userRoleRepo: Repository<UserRole>,
   ) {}
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find({
+  async findAll(): Promise<any[]> {
+    const users = await this.usersRepository.find({
       relations: ['userRoles', 'userRoles.role'],
+      order: { nama: 'ASC' },
+    });
+
+    const relations = await this.userRelationRepo.find({
+      relations: ['parent'],
+    });
+    const atasanMap = new Map(relations.map((r) => [r.userId, r]));
+
+    return users.map((u) => {
+      const primaryRole = u.userRoles?.find((ur) => ur.isPrimary) ?? u.userRoles?.[0];
+      const atasanRel = atasanMap.get(u.id);
+      return {
+        id: u.id,
+        nip: u.nip,
+        nama: u.nama,
+        email: u.email,
+        jenis: u.jenis,
+        role: primaryRole?.role?.name ?? '',
+        roleId: primaryRole?.roleId ?? null,
+        roleLevel: primaryRole?.role?.level ?? null,
+        unitNama: primaryRole?.role?.unitNama ?? null,
+        atasanId: atasanRel?.parentId ?? null,
+        atasanNama: atasanRel?.parent?.nama ?? null,
+        userRoles: (u.userRoles ?? []).map((ur) => ({
+          id: ur.id,
+          roleId: ur.roleId,
+          isPrimary: ur.isPrimary,
+          role: ur.role
+            ? { id: ur.role.id, name: ur.role.name, unitNama: ur.role.unitNama, level: ur.role.level }
+            : null,
+        })),
+      };
     });
   }
 
@@ -52,7 +84,7 @@ export class UsersService {
   async create(dto: CreateUserDto): Promise<User> {
     const hashed = await bcrypt.hash(dto.password, 10);
     const user = this.usersRepository.create({
-      nip: dto.nip,
+      nip: dto.nip ?? null,
       nama: dto.nama,
       email: dto.email,
       password: hashed,

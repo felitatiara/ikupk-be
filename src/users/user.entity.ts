@@ -6,8 +6,8 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'nip', type: 'varchar', length: 20, nullable: false })
-  nip: string;
+  @Column({ name: 'nip', type: 'varchar', length: 20, nullable: true })
+  nip: string | null;
 
   @Column({ name: 'nama', type: 'varchar', length: 100, nullable: false })
   nama: string;

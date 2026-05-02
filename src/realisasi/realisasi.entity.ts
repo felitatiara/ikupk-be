@@ -54,9 +54,13 @@ export class Realisasi {
   @JoinColumn({ name: 'created_by' })
   creator: User;
 
-  // 'pending' | 'approved' | 'rejected'
+  // 'pending' | 'approved' | 'rejected' | 'validated'
   @Column({ name: 'status', type: 'varchar', length: 20, default: 'pending' })
   status: string;
+
+  // Jumlah file yang dinyatakan valid oleh atasan setelah review
+  @Column({ name: 'valid_file_count', type: 'int', nullable: true })
+  validFileCount: number | null;
 
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;

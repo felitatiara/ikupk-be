@@ -14,6 +14,17 @@ export class IndikatorController {
     return this.indikatorService.findAvailableYears();
   }
 
+  /** Laporan hierarki IKU/PK dengan target + realisasi untuk export Excel */
+  @Get('laporan')
+  getLaporanWithRealisasi(
+    @Query('jenis') jenis: string,
+    @Query('tahun') tahun: string,
+    @Query('roleId', ParseIntPipe) roleId: number,
+    @Query('periode') periode?: string,
+  ) {
+    return this.indikatorService.getLaporanWithRealisasi(jenis, tahun, roleId, periode);
+  }
+
   @Get()
   findAll(@Query('tahun') tahun?: string) {
     return this.indikatorService.findAll(tahun);
