@@ -145,28 +145,46 @@ export class RealisasiService {
     return Array.from(byIndikator.values());
   }
 
-  /** SKP summary per-bawahan untuk ditampilkan di halaman SKP atasan */
-  async getSkpBawahan(atasanId: number, tahun: string): Promise<any[]> {
-    const relations = await this.userRelationRepository.find({
-      where: { parentId: atasanId },
-      relations: ['user'],
-    });
-
-    // Fallback: bawahan dari disposisi jika UserRelation belum dikonfigurasi
+  /** SKP summary per-bawahan untuk ditampilkan di halaman SKP atasan.
+   *  forDekan=true → semua user (dari seluruh hirarki) yang sudah submit realisasi. */
+  async getSkpBawahan(atasanId: number, tahun: string, forDekan = false): Promise<any[]> {
     const bawahanMap = new Map<number, any>();
-    for (const rel of relations) {
-      bawahanMap.set(rel.userId, rel.user);
-    }
-    if (bawahanMap.size === 0) {
-      const disposisiRecords = await this.disposisiRepository.find({
-        where: { fromUserId: atasanId, tahun },
-        relations: ['toUser'],
-      });
-      for (const d of disposisiRecords) {
-        if (d.toUser && !bawahanMap.has(d.toUserId)) {
-          bawahanMap.set(d.toUserId, d.toUser);
+
+    if (forDekan) {
+      // Dekan: tampilkan semua user yang punya realisasi di tahun ini
+      const allRealisasi = await this.realisasiRepository
+        .createQueryBuilder('r')
+        .leftJoinAndSelect('r.creator', 'creator')
+        .where('r.tahun = :tahun', { tahun })
+        .andWhere('r.created_by != :atasanId', { atasanId })
+        .getMany();
+      for (const r of allRealisasi) {
+        if (r.creator && !bawahanMap.has(r.createdBy)) {
+          bawahanMap.set(r.createdBy, r.creator);
         }
       }
+    } else {
+      const relations = await this.userRelationRepository.find({
+        where: { parentId: atasanId },
+        relations: ['user'],
+      });
+      for (const rel of relations) {
+        bawahanMap.set(rel.userId, rel.user);
+      }
+      // Fallback: bawahan dari disposisi jika UserRelation belum dikonfigurasi
+      if (bawahanMap.size === 0) {
+        const disposisiRecords = await this.disposisiRepository.find({
+          where: { fromUserId: atasanId, tahun },
+          relations: ['toUser'],
+        });
+        for (const d of disposisiRecords) {
+          if (d.toUser && !bawahanMap.has(d.toUserId)) {
+            bawahanMap.set(d.toUserId, d.toUser);
+          }
+        }
+      }
+      // Cegah self-entry
+      bawahanMap.delete(atasanId);
     }
 
     if (bawahanMap.size === 0) return [];

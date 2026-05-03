@@ -65,13 +65,14 @@ export class RealisasiController {
     return this.realisasiService.getMySkpStatus(userId, tahun);
   }
 
-  /** SKP summary per-bawahan untuk atasan */
+  /** SKP summary per-bawahan untuk atasan; forDekan=true → semua user yang punya realisasi */
   @Get('skp-bawahan')
   getSkpBawahan(
     @Query('atasanId', ParseIntPipe) atasanId: number,
     @Query('tahun') tahun: string,
+    @Query('forDekan') forDekan?: string,
   ) {
-    return this.realisasiService.getSkpBawahan(atasanId, tahun);
+    return this.realisasiService.getSkpBawahan(atasanId, tahun, forDekan === 'true');
   }
 
   /** Approve atau reject semua realisasi bawahan untuk tahun tertentu */
