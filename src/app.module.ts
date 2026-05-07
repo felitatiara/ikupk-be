@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { User } from './users/user.entity';
@@ -25,6 +26,8 @@ import { Disposisi } from './disposisi/disposisi.entity';
 import { DisposisiModule } from './disposisi/disposisi.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { IntegrationModule } from './integration/integration.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/notification.entity';
 import jwtConfig from './config/jwt.config';
 
 @Module({
@@ -51,11 +54,13 @@ import jwtConfig from './config/jwt.config';
           TargetUniversitas, TargetUnit,
           Realisasi, RealisasiFile,
           BaselineData, Kriteria, Disposisi,
+          Notification,
         ],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',
       }),
     }),
+    ScheduleModule.forRoot(),
     UsersModule,
     AuthModule,
     IndikatorModule,
@@ -66,6 +71,7 @@ import jwtConfig from './config/jwt.config';
     DisposisiModule,
     MonitoringModule,
     IntegrationModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

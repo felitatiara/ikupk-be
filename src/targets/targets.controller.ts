@@ -90,9 +90,17 @@ export class TargetsController {
     return this.targetsService.create(body);
   }
 
+  @Get('target-universitas')
+  getTargetUniversitas(
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.targetsService.getTargetUniversitasByIndikator(indikatorId, tahun);
+  }
+
   @Post('upsert-target-universitas')
-  upsertTargetUniversitas(@Body() body: { indikatorId: number; roleId: number; tahun: string; persentase: number; tenggat?: string }) {
-    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.roleId, body.tahun, body.persentase, body.tenggat);
+  upsertTargetUniversitas(@Body() body: { indikatorId: number; roleId: number; tahun: string; persentase: number; tenggat?: string; satuan?: string }) {
+    return this.targetsService.upsertTargetUniversitas(body.indikatorId, body.roleId, body.tahun, body.persentase, body.tenggat, body.satuan);
   }
 
   @Post('upsert-target-fakultas')

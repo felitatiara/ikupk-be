@@ -4,7 +4,9 @@
       "Bash(npx tsc *)",
       "Bash(npm run *)",
       "Bash(xargs cat *)",
-      "Bash(npx ts-node *)"
+      "Bash(npx ts-node *)",
+      "PowerShell($env:PGPASSWORD = \"301004\"; psql -U postgres -d repository -c \"\\\\d users\" 2>&1)",
+      "PowerShell($env:PGPASSWORD = \"301004\"; psql -U postgres -c \"CREATE DATABASE campus_repository;\" 2>&1)"
     ]
   }
 }

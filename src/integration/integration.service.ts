@@ -24,8 +24,8 @@ export class IntegrationService {
       'http://localhost:3005';
   }
 
-  private async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.repoUrl}${path}`);
+  private async get<T>(path: string, headers?: Record<string, string>): Promise<T> {
+    const res = await fetch(`${this.repoUrl}${path}`, { headers });
     if (!res.ok) {
       throw new InternalServerErrorException(
         `Repository responded ${res.status} for ${path}`,
@@ -39,7 +39,7 @@ export class IntegrationService {
       ...file,
       // Preview via public integration endpoint (no auth required — UUID is unguessable)
       preview_url: `${this.repoUrl}/api/integration/preview/${file.id}`,
-      download_url: `${this.repoUrl}/api/files/${file.id}/download`,
+      download_url: `${this.repoUrl}/api/integration/download/${file.id}`,
     };
   }
 
@@ -66,22 +66,22 @@ export class IntegrationService {
       `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}&email=${encodeURIComponent(email)}`,
     );
 
-    // Filter hanya file yang di-upload oleh user ini
-    const ownFiles = allFiles.filter((f) => f.owner?.email === email);
-
     return {
       indikatorKode: indikator.kode,
       indikatorNama: indikator.nama,
-      files: ownFiles.map((f) => this.appendFileUrls(f)),
+      files: allFiles.map((f) => this.appendFileUrls(f)),
     };
   }
 
   /**
    * Ambil SEMUA file dalam folder indikator tanpa filter pemilik (untuk pimpinan/admin).
+   * Menggunakan endpoint khusus di repository yang dilindungi shared secret —
+   * permission repository tetap berlaku untuk semua akses user biasa.
    */
-  async getAllFilesForIndikator(indikatorId: number, email: string): Promise<{
+  async getAllFilesForIndikator(indikatorId: number, _email: string): Promise<{
     indikatorKode: string;
     indikatorNama: string;
+    folderLink: string | null;
     files: any[];
   }> {
     const indikator = await this.indikatorRepo.findOneBy({ id: indikatorId });
@@ -90,14 +90,22 @@ export class IntegrationService {
     }
 
     const jenisLabel = this.jenisLabelMap[indikator.jenis?.toUpperCase()] || indikator.jenis || '';
+    const secret = this.configService.get<string>('INTEGRATION_SECRET') ?? '';
 
     const files = await this.get<any[]>(
-      `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}&email=${encodeURIComponent(email)}`,
+      `/api/integration/files/unrestricted?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}`,
+      { 'x-integration-secret': secret },
     );
+
+    // Ambil folder_id dari file pertama untuk link ke repository frontend
+    const repoFeUrl = this.configService.get<string>('REPOSITORY_FE_URL') || 'http://localhost:3000';
+    const firstFolderId = files.length > 0 ? files[0].folder_id : null;
+    const folderLink = firstFolderId ? `${repoFeUrl}/dashboard?folderId=${firstFolderId}` : null;
 
     return {
       indikatorKode: indikator.kode,
       indikatorNama: indikator.nama,
+      folderLink,
       files: files.map((f) => ({
         ...this.appendFileUrls(f),
         ownerEmail: f.owner?.email,
@@ -114,7 +122,8 @@ export class IntegrationService {
     const folders = await this.get<any[]>(
       `/api/integration/folders?email=${encodeURIComponent(email)}`,
     );
-    return folders.filter((f) => f.owner?.email !== email);
+    // Tampilkan folder yang bukan milik sendiri; folder tanpa owner dianggap shared
+    return folders.filter((f) => !f.owner || f.owner.email !== email);
   }
 
   /**

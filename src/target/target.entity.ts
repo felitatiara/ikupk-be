@@ -30,9 +30,13 @@ export class TargetUniversitas {
   @Column({ type: 'varchar', length: 4 })
   tahun!: string;
 
-  // Target dalam persen (0-100), misal: 80 berarti 80%
+  // IKU: nilai dalam persen (0–100). PK: nilai absolut (e.g. 5 dokumen).
   @Column({ type: 'numeric' })
   persentase!: number;
+
+  // Satuan target — diisi untuk PK (free text, e.g. "Dokumen", "Kegiatan").
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  satuan!: string | null;
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   tenggat!: string | null;

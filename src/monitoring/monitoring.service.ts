@@ -59,6 +59,18 @@ export class MonitoringService {
     return leafIds;
   }
 
+  /** Collect ALL descendant indikator IDs (any level) under a parent */
+  private async getAllDescendantIds(parentId: number): Promise<number[]> {
+    const children = await this.indikatorRepository.find({ where: { parentId } });
+    const ids: number[] = [];
+    for (const child of children) {
+      ids.push(child.id);
+      const deeper = await this.getAllDescendantIds(child.id);
+      ids.push(...deeper);
+    }
+    return ids;
+  }
+
   /**
    * Progress monitoring per level 0.
    * IKU: realisasi dari level 2, target_unit dari level 1.
@@ -87,30 +99,30 @@ export class MonitoringService {
       let sumTargetFak = 0;
       let sumRealisasi = 0;
 
+      // Collect all descendant IDs once — realisasi may be submitted at any level
+      const allDescendantIds = await this.getAllDescendantIds(l0.id);
+      if (allDescendantIds.length > 0) {
+        const realisasiList = await this.realisasiRepository.find({
+          where: allDescendantIds.map((id) => ({ indikatorId: id, tahun })),
+        });
+        sumRealisasi = realisasiList.reduce((s, r) => s + Number(r.realisasiAngka), 0);
+      }
+
       if (jenis === 'IKU') {
-        // Target unit at L1, realisasi at L2
+        // Target unit at L1
         for (const l1 of level1Children) {
           const unitTargets = await this.targetUnitRepository.find({ where: { indikatorId: l1.id, tahun } });
           sumTargetFak += unitTargets.reduce((s, t) => s + Number(t.nilaiTarget || 0), 0);
-
-          const l2s = await this.indikatorRepository.find({ where: { parentId: l1.id, level: 2 } });
-          for (const l2 of l2s) {
-            const realisasiList = await this.realisasiRepository.find({ where: { indikatorId: l2.id, tahun } });
-            sumRealisasi += realisasiList.reduce((s, r) => s + Number(r.realisasiAngka), 0);
-          }
         }
       } else {
-        // PK: target unit & realisasi at L3
+        // PK: target universitas at L3 (diinput saat tambah indikator per rincian)
         for (const l1 of level1Children) {
           const l2s = await this.indikatorRepository.find({ where: { parentId: l1.id, level: 2 } });
           for (const l2 of l2s) {
             const l3s = await this.indikatorRepository.find({ where: { parentId: l2.id, level: 3 } });
             for (const l3 of l3s) {
-              const unitTargets = await this.targetUnitRepository.find({ where: { indikatorId: l3.id, tahun } });
-              sumTargetFak += unitTargets.reduce((s, t) => s + Number(t.nilaiTarget || 0), 0);
-
-              const realisasiList = await this.realisasiRepository.find({ where: { indikatorId: l3.id, tahun } });
-              sumRealisasi += realisasiList.reduce((s, r) => s + Number(r.realisasiAngka), 0);
+              const l3Target = await this.targetUniRepository.findOne({ where: { indikatorId: l3.id, tahun } });
+              if (l3Target) sumTargetFak += Number(l3Target.persentase || 0);
             }
           }
         }
@@ -137,7 +149,9 @@ export class MonitoringService {
         id: l0.id,
         kode: l0.kode,
         nama: l0.nama,
-        targetUniversitas: persentaseTarget,   // % dari target_universitas
+        jenis: l0.jenis,
+        targetUniversitas: persentaseTarget,   // IKU: %; PK: nilai absolut
+        satuan: uniTarget?.satuan ?? null,
         targetAbsolut,
         baseline,
         targetFakultas: sumTargetFak,
@@ -160,11 +174,12 @@ export class MonitoringService {
     const l0 = await this.indikatorRepository.findOne({ where: { id: indikatorId } });
     if (!l0) return { indikator: null, entries: [] };
 
-    const leafIds = await this.getLeafIds(indikatorId, l0.jenis);
+    // Use all descendant IDs so we find realisasi submitted at any level (L1, L2, or L3)
+    const allIds = await this.getAllDescendantIds(indikatorId);
 
     const entries: any[] = [];
 
-    for (const leafId of leafIds) {
+    for (const leafId of allIds) {
       const indikator = await this.indikatorRepository.findOne({ where: { id: leafId } });
       const realisasiList = await this.realisasiRepository.find({
         where: { indikatorId: leafId, tahun },

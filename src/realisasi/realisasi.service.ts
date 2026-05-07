@@ -102,10 +102,13 @@ export class RealisasiService {
       .addOrderBy('creator.nama', 'ASC')
       .getMany();
 
-    // Fetch disposisi targets for all dosen-indikator pairs in one query
+    // Fetch disposisi targets: hanya yang DARI atasan ini ke masing-masing bawahan.
+    // Filter fromUserId = atasanId menghindari self-disposisi bawahan terpakai sebagai target.
     const allDosenIds = [...new Set(realisasiList.map(r => r.createdBy).filter(Boolean))];
     const disposisiList = allDosenIds.length > 0
-      ? await this.disposisiRepository.find({ where: { toUserId: In(allDosenIds), tahun } })
+      ? await this.disposisiRepository.find({
+          where: { fromUserId: atasanId, toUserId: In(allDosenIds), tahun },
+        })
       : [];
     const disposisiMap = new Map<string, number>();
     for (const d of disposisiList) {

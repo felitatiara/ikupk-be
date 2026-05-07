@@ -267,14 +267,21 @@ export class TargetsService {
     return this.targetUnitRepo.findOneOrFail({ where: { id } });
   }
 
-  async upsertTargetUniversitas(indikatorId: number, _roleId: number, tahun: string, persentase: number, tenggat?: string): Promise<TargetUniversitas> {
+  async getTargetUniversitasByIndikator(indikatorId: number, tahun: string) {
+    const t = await this.targetUniRepo.findOne({ where: { indikatorId, tahun } });
+    if (!t) return null;
+    return { id: t.id, indikatorId: t.indikatorId, tahun: t.tahun, targetAngka: Number(t.persentase), satuan: t.satuan ?? null, tenggat: t.tenggat ?? null };
+  }
+
+  async upsertTargetUniversitas(indikatorId: number, _roleId: number, tahun: string, persentase: number, tenggat?: string, satuan?: string): Promise<TargetUniversitas> {
     let target = await this.targetUniRepo.findOne({ where: { indikatorId, tahun } });
     if (target) {
       target.persentase = persentase;
       if (tenggat !== undefined) target.tenggat = tenggat ?? null;
+      if (satuan !== undefined) target.satuan = satuan ?? null;
       return this.targetUniRepo.save(target);
     }
-    target = this.targetUniRepo.create({ indikatorId, tahun, persentase, tenggat: tenggat ?? null });
+    target = this.targetUniRepo.create({ indikatorId, tahun, persentase, tenggat: tenggat ?? null, satuan: satuan ?? null });
     return this.targetUniRepo.save(target);
   }
 
@@ -365,25 +372,42 @@ export class TargetsService {
     await this.realisasiRepo.update(where, { status });
   }
 
+  /** Traverse indikator tree to find L0 and return satuan from target_universitas. */
+  private async getSatuanForIndikator(indikatorId: number, tahun: string): Promise<string> {
+    const allInds = await this.indikatorRepo.find();
+    const map = new Map(allInds.map((i) => [i.id, i]));
+    let cur = map.get(indikatorId);
+    while (cur && cur.parentId) cur = map.get(cur.parentId);
+    if (!cur) return '';
+    const uniTarget = await this.targetUniRepo.findOne({ where: { indikatorId: cur.id, tahun } });
+    return uniTarget?.satuan ?? '';
+  }
+
   async getForValidation(roleId?: number, tahun?: string, statusValidasi?: string): Promise<any[]> {
     const where: any = {};
     if (roleId) where.roleId = roleId;
     if (tahun) where.tahun = tahun;
     if (statusValidasi) where.statusValidasi = statusValidasi;
     const targets = await this.targetUnitRepo.find({ where, relations: ['indikator', 'role'] });
-    return targets.map((t, idx) => ({
-      id: t.id,
-      no: idx + 1,
-      unitKerja: t.role?.unitNama || '',
-      roleNama: t.role?.name || '',
-      namaIndikator: t.indikator?.nama || '',
-      kodeIndikator: t.indikator?.kode || '',
-      nilaiTarget: Number(t.nilaiTarget) || null,
-      satuan: 'Satuan',
-      periode: t.tahun,
-      statusValidasi: t.statusValidasi || 'draft',
-      catatan: t.catatan,
-    }));
+    const results: any[] = [];
+    for (let idx = 0; idx < targets.length; idx++) {
+      const t = targets[idx];
+      const satuan = await this.getSatuanForIndikator(t.indikatorId, t.tahun);
+      results.push({
+        id: t.id,
+        no: idx + 1,
+        unitKerja: t.role?.unitNama || '',
+        roleNama: t.role?.name || '',
+        namaIndikator: t.indikator?.nama || '',
+        kodeIndikator: t.indikator?.kode || '',
+        nilaiTarget: Number(t.nilaiTarget) || null,
+        satuan,
+        periode: t.tahun,
+        statusValidasi: t.statusValidasi || 'draft',
+        catatan: t.catatan,
+      });
+    }
+    return results;
   }
 
   async updateValidationStatus(id: number, status: 'pending' | 'approved' | 'rejected', catatanAdmin?: string): Promise<any> {
@@ -391,6 +415,7 @@ export class TargetsService {
     await this.targetUnitRepo.update(id, { statusValidasi: mappedStatus, catatan: catatanAdmin || null });
     const target = await this.targetUnitRepo.findOne({ where: { id }, relations: ['indikator', 'role'] });
     if (!target) throw new Error('Target not found');
+    const satuan = await this.getSatuanForIndikator(target.indikatorId, target.tahun);
     return {
       id: target.id,
       unitKerja: target.role?.unitNama || '',
@@ -398,7 +423,7 @@ export class TargetsService {
       namaIndikator: target.indikator?.nama || '',
       kodeIndikator: target.indikator?.kode || '',
       nilaiTarget: Number(target.nilaiTarget) || null,
-      satuan: 'Satuan',
+      satuan,
       periode: target.tahun,
       statusValidasi: target.statusValidasi,
       catatan: target.catatan,

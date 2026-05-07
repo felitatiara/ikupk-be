@@ -235,21 +235,18 @@ export class IndikatorService {
                 baselineJumlah: childBaseline,
                 children: await Promise.all(
                   level3.map(async (l3) => {
-                    let l3NilaiTarget: number | null = null;
-                    let l3TargetId: number | null = null;
-                    if (roleId) {
-                      const l3t = await this.targetUnitRepo.findOne({ where: { indikatorId: l3.id, roleId, tahun } });
-                      l3NilaiTarget = l3t ? Number(l3t.nilaiTarget) : null;
-                      l3TargetId = l3t?.id ?? null;
-                    }
+                    // PK: target disimpan di target_universitas per L3
+                    const l3UniTarget = await this.targetUniRepo.findOne({ where: { indikatorId: l3.id, tahun } });
                     return {
                       id: l3.id,
                       kode: l3.kode,
                       nama: l3.nama,
                       level: l3.level,
                       tahun: l3.tahun,
-                      targetId: l3TargetId,
-                      nilaiTarget: l3NilaiTarget,
+                      targetId: l3UniTarget?.id ?? null,
+                      nilaiTarget: l3UniTarget ? Number(l3UniTarget.persentase) : null,
+                      tenggat: l3UniTarget?.tenggat ?? null,
+                      satuan: l3UniTarget?.satuan ?? null,
                     };
                   }),
                 ),
@@ -288,9 +285,18 @@ export class IndikatorService {
     const disposisis = await this.disposisiRepo.find({ where: { toUserId: userId, tahun } });
     if (disposisis.length === 0) return [];
 
+    // Hanya gunakan disposisi yang diterima dari orang lain (atasan).
+    // Self-disposisi (fromUserId === userId) tidak dianggap sebagai "target yang diterima"
+    // dan tidak memunculkan entri baru di tabel.
+    const receivedFromOthers = disposisis.filter(d => d.fromUserId !== userId);
+    if (receivedFromOthers.length === 0) return [];
+
     const disposisiByIndikator = new Map<number, number>();
-    for (const d of disposisis) {
-      disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
+    for (const d of receivedFromOthers) {
+      disposisiByIndikator.set(
+        d.indikatorId,
+        (disposisiByIndikator.get(d.indikatorId) ?? 0) + Number(d.jumlahTarget),
+      );
     }
     const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
 
