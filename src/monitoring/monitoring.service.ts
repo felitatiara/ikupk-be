@@ -8,6 +8,7 @@ import { RealisasiFile } from '../realisasi/realisasi-file.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { User } from '../users/user.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
 
 @Injectable()
 export class MonitoringService {
@@ -26,6 +27,8 @@ export class MonitoringService {
     private readonly baselineRepository: Repository<BaselineData>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(Disposisi)
+    private readonly disposisiRepository: Repository<Disposisi>,
   ) {}
 
   private async getBaseline(indikatorId: number, tahun: string, allIndikators: Indikator[]): Promise<number | null> {
@@ -216,6 +219,50 @@ export class MonitoringService {
     }
 
     return { indikator: { id: l0.id, kode: l0.kode, nama: l0.nama, jenis: l0.jenis }, entries };
+  }
+
+  /**
+   * Daftar dosen yang sudah didisposisikan oleh kaprodi (fromUserId).
+   * Digroup per dosen, masing-masing berisi list indikator yang didisposisikan.
+   */
+  async getDisposisiDosen(fromUserId: number, tahun: string) {
+    const disposisiList = await this.disposisiRepository.find({
+      where: { fromUserId, tahun },
+      relations: ['toUser', 'indikator'],
+      order: { createdAt: 'ASC' },
+    });
+
+    const dosenMap = new Map<number, any>();
+
+    for (const d of disposisiList) {
+      if (!d.toUser) continue;
+
+      if (!dosenMap.has(d.toUserId)) {
+        dosenMap.set(d.toUserId, {
+          dosenId: d.toUserId,
+          nama: d.toUser.nama,
+          email: d.toUser.email,
+          nip: d.toUser.nip,
+          disposisi: [],
+        });
+      }
+
+      dosenMap.get(d.toUserId).disposisi.push({
+        disposisiId: d.id,
+        indikatorId: d.indikatorId,
+        indikatorKode: d.indikator?.kode || '',
+        indikatorNama: d.indikator?.nama || '',
+        jumlahTarget: Number(d.jumlahTarget),
+        status: d.status,
+        createdAt: d.createdAt,
+      });
+    }
+
+    return {
+      fromUserId,
+      tahun,
+      data: Array.from(dosenMap.values()),
+    };
   }
 
   async getUnitProgress(roleId: number, tahun: string) {

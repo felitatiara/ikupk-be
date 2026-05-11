@@ -34,4 +34,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsInt()
   atasanId?: number | null;
+
+  // Multiple atasan (jika lebih dari satu); mengoverride atasanId jika diisi
+  @IsOptional()
+  atasanIds?: number[];
 }

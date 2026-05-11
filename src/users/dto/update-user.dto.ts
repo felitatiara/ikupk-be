@@ -28,7 +28,15 @@ export class UpdateUserDto {
   @IsInt()
   roleId?: number | null;
 
+  // Ganti semua non-primary roles; jika diisi, replace seluruh extra roles
+  @IsOptional()
+  extraRoleIds?: number[];
+
   @IsOptional()
   @IsInt()
   atasanId?: number | null;
+
+  // Multiple atasan; jika diisi, mengoverride atasanId
+  @IsOptional()
+  atasanIds?: number[];
 }

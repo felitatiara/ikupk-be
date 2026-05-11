@@ -9,6 +9,7 @@ import { RealisasiFile } from '../realisasi/realisasi-file.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { User } from '../users/user.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { User } from '../users/user.entity';
       Indikator,
       BaselineData,
       User,
+      Disposisi,
     ]),
   ],
   controllers: [MonitoringController],
