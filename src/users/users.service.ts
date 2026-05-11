@@ -31,11 +31,15 @@ export class UsersService {
     const relations = await this.userRelationRepo.find({
       relations: ['parent'],
     });
-    const atasanMap = new Map(relations.map((r) => [r.userId, r]));
+    const atasanMap = new Map<number, UserRelation[]>();
+    for (const r of relations) {
+      if (!atasanMap.has(r.userId)) atasanMap.set(r.userId, []);
+      atasanMap.get(r.userId)!.push(r);
+    }
 
     return users.map((u) => {
       const primaryRole = u.userRoles?.find((ur) => ur.isPrimary) ?? u.userRoles?.[0];
-      const atasanRel = atasanMap.get(u.id);
+      const atasanRels = atasanMap.get(u.id) ?? [];
       return {
         id: u.id,
         nip: u.nip,
@@ -46,8 +50,10 @@ export class UsersService {
         roleId: primaryRole?.roleId ?? null,
         roleLevel: primaryRole?.role?.level ?? null,
         unitNama: primaryRole?.role?.unitNama ?? null,
-        atasanId: atasanRel?.parentId ?? null,
-        atasanNama: atasanRel?.parent?.nama ?? null,
+        atasanId: atasanRels[0]?.parentId ?? null,
+        atasanNama: atasanRels[0]?.parent?.nama ?? null,
+        atasanIds: atasanRels.map((r) => r.parentId),
+        atasanNamas: atasanRels.map((r) => r.parent?.nama ?? ''),
         userRoles: (u.userRoles ?? []).map((ur) => ({
           id: ur.id,
           roleId: ur.roleId,
@@ -108,10 +114,11 @@ export class UsersService {
       }
     }
 
-    // Assign atasan relation
-    if (dto.atasanId) {
+    // Assign atasan relations (atasanIds takes priority over atasanId)
+    const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
+    for (const pid of atasanIdList) {
       await this.userRelationRepo.save(
-        this.userRelationRepo.create({ userId: savedUser.id, parentId: dto.atasanId }),
+        this.userRelationRepo.create({ userId: savedUser.id, parentId: pid }),
       );
     }
 
@@ -170,12 +177,26 @@ export class UsersService {
       }
     }
 
-    // Update atasan relation
-    if (dto.atasanId !== undefined) {
+    // Update extra roles jika dikirim
+    if (dto.extraRoleIds !== undefined) {
+      await this.userRoleRepo.delete({ userId: id, isPrimary: false });
+      for (const rid of dto.extraRoleIds) {
+        const exists = await this.userRoleRepo.findOne({ where: { userId: id, roleId: rid } });
+        if (!exists) {
+          await this.userRoleRepo.save(
+            this.userRoleRepo.create({ userId: id, roleId: rid, isPrimary: false }),
+          );
+        }
+      }
+    }
+
+    // Update atasan relations (atasanIds takes priority over atasanId)
+    if (dto.atasanIds !== undefined || dto.atasanId !== undefined) {
       await this.userRelationRepo.delete({ userId: id });
-      if (dto.atasanId !== null) {
+      const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
+      for (const pid of atasanIdList) {
         await this.userRelationRepo.save(
-          this.userRelationRepo.create({ userId: id, parentId: dto.atasanId }),
+          this.userRelationRepo.create({ userId: id, parentId: pid }),
         );
       }
     }

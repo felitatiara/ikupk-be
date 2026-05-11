@@ -28,4 +28,12 @@ export class MonitoringController {
   ) {
     return this.monitoringService.getUnitProgress(unitId, tahun);
   }
+
+  @Get('disposisi-dosen')
+  async getDisposisiDosen(
+    @Query('fromUserId', ParseIntPipe) fromUserId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.monitoringService.getDisposisiDosen(fromUserId, tahun);
+  }
 }
