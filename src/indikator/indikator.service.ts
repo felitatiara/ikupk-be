@@ -8,6 +8,7 @@ import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
 import { UserRelation } from '../users/user_relation.entity';
+import { UserRole } from '../roles/user-role.entity';
 
 const MAX_LEVEL: Record<string, number> = { IKU: 2, PK: 3 };
 
@@ -32,6 +33,8 @@ export class IndikatorService {
     private realisasiRepo: Repository<Realisasi>,
     @InjectRepository(UserRelation)
     private userRelationRepo: Repository<UserRelation>,
+    @InjectRepository(UserRole)
+    private userRoleRepo: Repository<UserRole>,
   ) {}
 
   async findAll(tahun?: string): Promise<Indikator[]> {
@@ -53,6 +56,17 @@ export class IndikatorService {
     }
     const t = this.indikatorRepository.create(data);
     return this.indikatorRepository.save(t);
+  }
+
+  async getCascadeChain(id: number): Promise<number[]> {
+    const ind = await this.indikatorRepository.findOneBy({ id });
+    if (!ind || !ind.cascadeChain) return [];
+    try { return JSON.parse(ind.cascadeChain); } catch { return []; }
+  }
+
+  async saveCascadeChain(id: number, chain: number[]): Promise<{ success: boolean }> {
+    await this.indikatorRepository.update(id, { cascadeChain: JSON.stringify(chain) });
+    return { success: true };
   }
 
   async update(id: number, data: Partial<Indikator>): Promise<Indikator | null> {
@@ -133,6 +147,7 @@ export class IndikatorService {
             level: src.level,
             parentId: newParentId,
             jenisData: src.jenisData,
+            sumberData: String(src.sumberData || 'repository'),
           }),
         );
         idMap.set(src.id, saved.id);
@@ -204,11 +219,13 @@ export class IndikatorService {
           parentId: l1.parentId,
           targetId,
           nilaiTarget,
+          sumberData: String(l1.sumberData || 'repository'),
           baselineJumlah: baselineJumlahSub,
           children: await Promise.all(
             level2.map(async (l2) => {
               let childNilaiTarget: number | null = null;
               let childTargetId: number | null = null;
+              let childSatuan: string | null = null;
               if (roleId) {
                 const ct = await this.targetUnitRepo.findOne({ where: { indikatorId: l2.id, roleId, tahun } });
                 childNilaiTarget = ct ? Number(ct.nilaiTarget) : null;
@@ -218,6 +235,15 @@ export class IndikatorService {
                 const ct = await this.targetUnitRepo.findOne({ where: { indikatorId: l2.id, tahun } });
                 childNilaiTarget = ct ? Number(ct.nilaiTarget) : null;
                 if (!childTargetId) childTargetId = ct?.id ?? null;
+              }
+              // Fallback: cek target_universitas (target yang di-set admin di master indikator)
+              if (childNilaiTarget === null) {
+                const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l2.id, tahun } });
+                if (uniT) {
+                  childNilaiTarget = Number(uniT.persentase);
+                  if (!childTargetId) childTargetId = uniT.id;
+                  childSatuan = uniT.satuan;
+                }
               }
 
               // Level 3 — hanya PK
@@ -232,7 +258,9 @@ export class IndikatorService {
                 tahun: l2.tahun,
                 targetId: childTargetId,
                 nilaiTarget: childNilaiTarget,
+                satuan: childSatuan,
                 baselineJumlah: childBaseline,
+                sumberData: String(l2.sumberData || 'repository'),
                 children: await Promise.all(
                   level3.map(async (l3) => {
                     // PK: target disimpan di target_universitas per L3
@@ -247,6 +275,7 @@ export class IndikatorService {
                       nilaiTarget: l3UniTarget ? Number(l3UniTarget.persentase) : null,
                       tenggat: l3UniTarget?.tenggat ?? null,
                       satuan: l3UniTarget?.satuan ?? null,
+                      sumberData: String(l3.sumberData || 'repository'),
                     };
                   }),
                 ),
@@ -272,6 +301,7 @@ export class IndikatorService {
         tahun: root.tahun,
         persentaseTarget: storedTarget,
         targetAbsolut,
+        satuan: uniTarget?.satuan ?? null,
         tenggat: uniTarget?.tenggat ?? null,
         baselineJumlah: rootBaseline,
         subIndikators,
@@ -285,12 +315,10 @@ export class IndikatorService {
     const disposisis = await this.disposisiRepo.find({ where: { toUserId: userId, tahun } });
     if (disposisis.length === 0) return [];
 
-    // Hanya gunakan disposisi yang diterima dari orang lain (atasan).
-    // Self-disposisi (fromUserId === userId) tidak dianggap sebagai "target yang diterima"
-    // dan tidak memunculkan entri baru di tabel.
     const receivedFromOthers = disposisis.filter(d => d.fromUserId !== userId);
     if (receivedFromOthers.length === 0) return [];
 
+    // Mulai dari jumlah yang diterima dari atasan sebagai default
     const disposisiByIndikator = new Map<number, number>();
     for (const d of receivedFromOthers) {
       disposisiByIndikator.set(
@@ -298,6 +326,17 @@ export class IndikatorService {
         (disposisiByIndikator.get(d.indikatorId) ?? 0) + Number(d.jumlahTarget),
       );
     }
+
+    // Jika user mendisposisikan ke diri sendiri, tampilkan jumlah self-disposisi
+    // sebagai target personal (bukan jumlah total yang diterima dari atasan)
+    const selfDisposisis = disposisis.filter(d => d.fromUserId === userId);
+    for (const d of selfDisposisis) {
+      disposisiByIndikator.set(
+        d.indikatorId,
+        Number(d.jumlahTarget),
+      );
+    }
+
     const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
 
     const fullGrouped = await this.findGrouped(jenis, tahun, roleId);
@@ -494,6 +533,86 @@ export class IndikatorService {
 
       return { ...group, sdPersen, subIndikators: enrichedSubs };
     });
+  }
+
+  async getMonitoringBawahan(jenis: string, tahun: string, userId: number, roleLevel: number) {
+    // 1. Ambil daftar bawahan berdasarkan level role
+    type BawahanItem = { id: number; nama: string; roleName: string; roleLevel: number; unitNama: string | null };
+    const bawahanList: BawahanItem[] = [];
+
+    if (roleLevel <= 1) {
+      // Dekan / Wadek: semua user non-admin (role level >= 2)
+      const userRoles = await this.userRoleRepo.find({
+        where: { isPrimary: true },
+        relations: ['user', 'role'],
+      });
+      const seen = new Set<number>();
+      for (const ur of userRoles) {
+        if (ur.user && ur.role && ur.role.level >= 2 && !seen.has(ur.user.id)) {
+          seen.add(ur.user.id);
+          bawahanList.push({ id: ur.user.id, nama: ur.user.nama, roleName: ur.role.name, roleLevel: ur.role.level, unitNama: ur.role.unitNama ?? null });
+        }
+      }
+    } else {
+      // Kajur / Kaprodi: bawahan langsung via user_relations
+      const relations = await this.userRelationRepo.find({
+        where: { parentId: userId },
+        relations: ['user', 'user.userRoles', 'user.userRoles.role'],
+      });
+      for (const rel of relations) {
+        if (!rel.user) continue;
+        const pr = rel.user.userRoles?.find((ur) => ur.isPrimary) ?? rel.user.userRoles?.[0];
+        bawahanList.push({ id: rel.user.id, nama: rel.user.nama, roleName: pr?.role?.name ?? '', roleLevel: pr?.role?.level ?? 4, unitNama: pr?.role?.unitNama ?? null });
+      }
+    }
+
+    const bawahanIds = bawahanList.map((b) => b.id);
+
+    // 2. Bangun baris dari leaf indikator
+    const all = await this.indikatorRepository.find({ where: { jenis, tahun }, order: { kode: 'ASC' } });
+    const roots = all.filter((i) => i.level === 0);
+    const isPK = jenis.toUpperCase() === 'PK';
+
+    type LeafRow = {
+      groupId: number; groupKode: string; groupNama: string;
+      subId: number; subKode: string; subNama: string;
+      leafId: number; leafKode: string; leafNama: string;
+      nilaiTarget: number | null; satuan: string | null;
+      disposisiByUser: Record<number, number>;
+    };
+    const leafRows: LeafRow[] = [];
+
+    for (const root of roots) {
+      const level1 = all.filter((i) => i.level === 1 && i.parentId === root.id);
+      for (const l1 of level1) {
+        const level2 = all.filter((i) => i.level === 2 && i.parentId === l1.id);
+        if (!isPK) {
+          for (const l2 of level2) {
+            const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l2.id, tahun } });
+            leafRows.push({ groupId: root.id, groupKode: root.kode, groupNama: root.nama, subId: l1.id, subKode: l1.kode, subNama: l1.nama, leafId: l2.id, leafKode: l2.kode, leafNama: l2.nama, nilaiTarget: uniT ? Number(uniT.persentase) : null, satuan: uniT?.satuan ?? null, disposisiByUser: {} });
+          }
+        } else {
+          for (const l2 of level2) {
+            const level3 = all.filter((i) => i.level === 3 && i.parentId === l2.id);
+            for (const l3 of level3) {
+              const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l3.id, tahun } });
+              leafRows.push({ groupId: root.id, groupKode: root.kode, groupNama: root.nama, subId: l1.id, subKode: l1.kode, subNama: l1.nama, leafId: l3.id, leafKode: l3.kode, leafNama: l3.nama, nilaiTarget: uniT ? Number(uniT.persentase) : null, satuan: uniT?.satuan ?? null, disposisiByUser: {} });
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Isi data disposisi per bawahan
+    if (bawahanIds.length > 0) {
+      const disposisiList = await this.disposisiRepo.find({ where: { toUserId: In(bawahanIds), tahun } });
+      for (const d of disposisiList) {
+        const row = leafRows.find((r) => r.leafId === d.indikatorId);
+        if (row) row.disposisiByUser[d.toUserId] = (row.disposisiByUser[d.toUserId] ?? 0) + Number(d.jumlahTarget);
+      }
+    }
+
+    return { bawahanList, rows: leafRows };
   }
 
   /** Daftar tahun yang sudah punya indikator (untuk dropdown pilih tahun) */

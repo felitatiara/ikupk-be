@@ -62,6 +62,9 @@ export class Realisasi {
   @Column({ name: 'valid_file_count', type: 'int', nullable: true })
   validFileCount: number | null;
 
+  @Column({ type: 'text', nullable: true })
+  keterangan: string | null;
+
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;
 }

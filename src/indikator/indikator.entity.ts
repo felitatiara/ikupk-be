@@ -35,6 +35,14 @@ export class Indikator {
   @Column({ name: 'jenis_data', type: 'varchar', length: 50, nullable: true })
   jenisData!: string | null;
 
+  // 'repository' | 'ikupk' — menentukan apakah realisasi diambil dari repository atau input langsung
+  @Column({ name: 'sumber_data', type: 'varchar', length: 20, default: 'repository' })
+  sumberData!: string;
+
+  // Alur disposisi: JSON array user ID yang menjadi penerima disposisi secara berurutan
+  @Column({ name: 'cascade_chain', type: 'text', nullable: true })
+  cascadeChain!: string | null;
+
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt!: Date;
 

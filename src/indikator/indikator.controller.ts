@@ -14,6 +14,17 @@ export class IndikatorController {
     return this.indikatorService.findAvailableYears();
   }
 
+  /** Monitoring disposisi bawahan: siapa dapat target apa */
+  @Get('monitoring-bawahan')
+  getMonitoringBawahan(
+    @Query('jenis') jenis: string,
+    @Query('tahun') tahun: string,
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('roleLevel', ParseIntPipe) roleLevel: number,
+  ) {
+    return this.indikatorService.getMonitoringBawahan(jenis, tahun, userId, roleLevel);
+  }
+
   /** Laporan hierarki IKU/PK dengan target + realisasi untuk export Excel */
   @Get('laporan')
   getLaporanWithRealisasi(
@@ -95,12 +106,26 @@ export class IndikatorController {
       level?: number;
       parentId?: number | null;
       jenisData?: string | null;
+      sumberData?: string;
     },
   ) {
     return this.indikatorService.update(id, data);
   }
 
   /** Hapus semua indikator — jika ?tahun= diberikan, hanya hapus tahun itu */
+  @Get(':id/cascade-chain')
+  getCascadeChain(@Param('id', ParseIntPipe) id: number) {
+    return this.indikatorService.getCascadeChain(id);
+  }
+
+  @Post(':id/cascade-chain')
+  saveCascadeChain(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { chain: number[] },
+  ) {
+    return this.indikatorService.saveCascadeChain(id, body.chain);
+  }
+
   @Delete('all')
   @HttpCode(204)
   removeAll(@Query('tahun') tahun?: string) {

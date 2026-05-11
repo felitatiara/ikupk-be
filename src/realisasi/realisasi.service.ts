@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Realisasi } from './realisasi.entity';
+import { RealisasiFile } from './realisasi-file.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { UserRelation } from '../users/user_relation.entity';
@@ -12,6 +15,8 @@ export class RealisasiService {
   constructor(
     @InjectRepository(Realisasi)
     private readonly realisasiRepository: Repository<Realisasi>,
+    @InjectRepository(RealisasiFile)
+    private readonly realisasiFileRepository: Repository<RealisasiFile>,
     @InjectRepository(Disposisi)
     private readonly disposisiRepository: Repository<Disposisi>,
     @InjectRepository(TargetUnit)
@@ -298,9 +303,105 @@ export class RealisasiService {
     return this.realisasiRepository.findOneOrFail({ where: { id } });
   }
 
+  /** Ambil semua submission direct-input milik userId untuk indikator + tahun tertentu */
+  async getMyRealisasiDirect(indikatorId: number, tahun: string, userId: number): Promise<any[]> {
+    const list = await this.realisasiRepository.find({
+      where: { indikatorId, tahun, createdBy: userId },
+      order: { createdAt: 'DESC' },
+    });
+    return list.map(r => ({
+      id: r.id,
+      realisasiAngka: Number(r.realisasiAngka),
+      periode: r.periode,
+      keterangan: r.keterangan ?? null,
+      status: r.status,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /** Submit atau upsert realisasi direct-input (sumberData = 'ikupk') */
+  async submitDirect(data: {
+    indikatorId: number;
+    roleId: number | null;
+    tahun: string;
+    periode: string;
+    realisasiAngka: number;
+    keterangan?: string;
+    userId: number;
+  }): Promise<Realisasi> {
+    const { indikatorId, roleId, tahun, periode, realisasiAngka, keterangan, userId } = data;
+    const roleIdWhere = roleId !== null ? roleId : IsNull();
+    let existing = await this.realisasiRepository.findOne({
+      where: { indikatorId, roleId: roleIdWhere as any, tahun, periode, createdBy: userId },
+    });
+    if (existing) {
+      existing.realisasiAngka = realisasiAngka;
+      existing.keterangan = keterangan ?? null;
+      return this.realisasiRepository.save(existing);
+    }
+    return this.realisasiRepository.save(
+      this.realisasiRepository.create({
+        indikatorId,
+        roleId,
+        tahun,
+        periode,
+        realisasiAngka,
+        keterangan: keterangan ?? null,
+        createdBy: userId,
+        status: 'pending',
+      }),
+    );
+  }
+
   async create(data: Partial<Realisasi>): Promise<Realisasi> {
     const realisasi = this.realisasiRepository.create(data);
     return this.realisasiRepository.save(realisasi);
+  }
+
+  async saveIkupkFile(data: {
+    indikatorId: number;
+    tahun: string;
+    periode: string;
+    fileName: string;
+    fileUrl: string;
+    createdBy: number;
+  }): Promise<RealisasiFile> {
+    return this.realisasiFileRepository.save(
+      this.realisasiFileRepository.create({
+        indikatorId: data.indikatorId,
+        tahun: data.tahun,
+        periode: data.periode,
+        fileName: data.fileName,
+        fileUrl: data.fileUrl,
+        createdBy: data.createdBy,
+        realisasiId: null,
+      }),
+    );
+  }
+
+  async getIkupkFiles(indikatorId: number, tahun: string, userId: number): Promise<any[]> {
+    const files = await this.realisasiFileRepository.find({
+      where: { indikatorId, tahun, createdBy: userId },
+      order: { createdAt: 'DESC' },
+    });
+    return files.map((f) => ({
+      id: f.id,
+      fileName: f.fileName,
+      fileUrl: f.fileUrl,
+      periode: f.periode,
+      createdAt: f.createdAt,
+    }));
+  }
+
+  async deleteIkupkFile(id: number, userId: number): Promise<void> {
+    const file = await this.realisasiFileRepository.findOne({ where: { id, createdBy: userId } });
+    if (!file) return;
+    const relativePath = file.fileUrl.startsWith('/') ? file.fileUrl.slice(1) : file.fileUrl;
+    const fullPath = path.join(process.cwd(), relativePath);
+    try {
+      if (fs.existsSync(fullPath)) await fs.promises.unlink(fullPath);
+    } catch { /* ignore file system errors */ }
+    await this.realisasiFileRepository.delete(id);
   }
 
   async submitFromFile(data: {

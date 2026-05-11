@@ -8,10 +8,12 @@ import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
 import { UserRelation } from '../users/user_relation.entity';
+import { User } from '../users/user.entity';
+import { UserRole } from '../roles/user-role.entity';
 import { IndikatorController } from './indikator.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Indikator, TargetUniversitas, TargetUnit, BaselineData, Disposisi, Realisasi, UserRelation])],
+  imports: [TypeOrmModule.forFeature([Indikator, TargetUniversitas, TargetUnit, BaselineData, Disposisi, Realisasi, UserRelation, User, UserRole])],
   providers: [IndikatorService],
   controllers: [IndikatorController],
   exports: [IndikatorService],

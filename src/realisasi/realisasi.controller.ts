@@ -1,4 +1,7 @@
-import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseIntPipe, Query, UseGuards, Req, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { RealisasiService } from './realisasi.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -83,6 +86,98 @@ export class RealisasiController {
     @Body('tahun') tahun: string,
   ) {
     return this.realisasiService.approveBawahanSkp(userId, action, tahun);
+  }
+
+  /** Ambil submission direct-input milik user yang sedang login untuk indikator + tahun */
+  @UseGuards(JwtAuthGuard)
+  @Get('direct-input')
+  getMyDirectInput(
+    @Req() req: any,
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    const userId: number = req.user?.id;
+    return this.realisasiService.getMyRealisasiDirect(indikatorId, tahun, userId);
+  }
+
+  /** Submit atau upsert realisasi direct-input (sumberData = 'ikupk') */
+  @UseGuards(JwtAuthGuard)
+  @Post('direct-input')
+  submitDirectInput(
+    @Req() req: any,
+    @Body() body: {
+      indikatorId: number;
+      tahun: string;
+      periode: string;
+      realisasiAngka: number;
+      keterangan?: string;
+    },
+  ) {
+    const userId: number = req.user?.id;
+    const primaryUserRole =
+      req.user?.userRoles?.find((ur: any) => ur.isPrimary) ?? req.user?.userRoles?.[0];
+    const roleId: number | null = primaryUserRole?.roleId ?? null;
+    return this.realisasiService.submitDirect({
+      indikatorId: body.indikatorId,
+      roleId,
+      tahun: body.tahun,
+      periode: body.periode,
+      realisasiAngka: body.realisasiAngka,
+      keterangan: body.keterangan,
+      userId,
+    });
+  }
+
+  /** Upload file bukti langsung ke sistem IKU PK (sumberData = 'ikupk') */
+  @UseGuards(JwtAuthGuard)
+  @Post('ikupk-upload')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: './uploads/realisasi',
+      filename: (_req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, uniqueSuffix + extname(file.originalname));
+      },
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 },
+  }))
+  uploadIkupkFile(
+    @Req() req: any,
+    @UploadedFile() file: { originalname: string; filename: string },
+    @Body() body: { indikatorId: string; tahun: string; periode: string },
+  ) {
+    const userId: number = req.user?.id;
+    return this.realisasiService.saveIkupkFile({
+      indikatorId: parseInt(body.indikatorId),
+      tahun: body.tahun,
+      periode: body.periode,
+      fileName: file.originalname,
+      fileUrl: `/uploads/realisasi/${file.filename}`,
+      createdBy: userId,
+    });
+  }
+
+  /** Ambil daftar file ikupk milik user login untuk indikator + tahun */
+  @UseGuards(JwtAuthGuard)
+  @Get('ikupk-files')
+  getIkupkFiles(
+    @Req() req: any,
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    const userId: number = req.user?.id;
+    return this.realisasiService.getIkupkFiles(indikatorId, tahun, userId);
+  }
+
+  /** Hapus file ikupk milik user login */
+  @UseGuards(JwtAuthGuard)
+  @Delete('ikupk-files/:id')
+  deleteIkupkFile(
+    @Req() req: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const userId: number = req.user?.id;
+    return this.realisasiService.deleteIkupkFile(id, userId);
   }
 
   @UseGuards(JwtAuthGuard)
