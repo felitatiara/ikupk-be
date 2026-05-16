@@ -117,7 +117,7 @@ export class TargetsService {
       if (seen.has(key)) continue;
       seen.set(key, true);
       const rootIndikator = indikatorMap.get(rootId);
-      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja';
+      const jenisLabel = rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja';
       const statusLabel =
         t.statusValidasi === 'draft' ? 'Belum Diajukan'
         : t.statusValidasi === 'diajukan' ? 'Menunggu Validasi Pimpinan'
@@ -155,7 +155,7 @@ export class TargetsService {
           id: d.id,
           indikatorId: d.indikatorId,
           tahun: d.tahun,
-          target: d.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+          target: d.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja',
           sasaranStrategis: d.indikator?.nama || '',
           jumlahTarget: Number(d.jumlahTarget) || 0,
           roleId,
@@ -167,7 +167,7 @@ export class TargetsService {
       id: t.id,
       indikatorId: t.indikatorId,
       tahun: t.tahun,
-      target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+      target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja',
       sasaranStrategis: t.indikator?.nama || '',
       nilaiTarget: Number(t.nilaiTarget) || 0,
       roleId: t.roleId,
@@ -201,7 +201,7 @@ export class TargetsService {
         id: t.id,
         indikatorId: rootId,
         tahun: t.tahun,
-        target: rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+        target: rootIndikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja',
         sasaranStrategis: rootIndikator?.nama || '',
         nilaiTarget: Number(t.nilaiTarget) || 0,
         status: 'draft',
@@ -253,7 +253,7 @@ export class TargetsService {
         id: t.id,
         indikatorId: t.indikatorId,
         tahun: t.tahun,
-        target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+        target: t.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja',
         sasaranStrategis: rootIndikator?.nama || t.indikator?.nama || '',
         nilaiTarget: Number(t.nilaiTarget) || 0,
         status: t.statusValidasi,
@@ -383,11 +383,20 @@ export class TargetsService {
     return uniTarget?.satuan ?? '';
   }
 
+  private mapStatus(raw: string | null | undefined): 'pending' | 'approved' | 'rejected' {
+    if (raw === 'disetujui' || raw === 'approved') return 'approved';
+    if (raw === 'ditolak' || raw === 'rejected') return 'rejected';
+    return 'pending';
+  }
+
   async getForValidation(roleId?: number, tahun?: string, statusValidasi?: string): Promise<any[]> {
     const where: any = {};
     if (roleId) where.roleId = roleId;
     if (tahun) where.tahun = tahun;
-    if (statusValidasi) where.statusValidasi = statusValidasi;
+    if (statusValidasi) {
+      const dbStatus = statusValidasi === 'approved' ? 'disetujui' : statusValidasi === 'rejected' ? 'ditolak' : 'diajukan';
+      where.statusValidasi = dbStatus;
+    }
     const targets = await this.targetUnitRepo.find({ where, relations: ['indikator', 'role'] });
     const results: any[] = [];
     for (let idx = 0; idx < targets.length; idx++) {
@@ -400,18 +409,20 @@ export class TargetsService {
         roleNama: t.role?.name || '',
         namaIndikator: t.indikator?.nama || '',
         kodeIndikator: t.indikator?.kode || '',
-        nilaiTarget: Number(t.nilaiTarget) || null,
+        targetKuantitas: Number(t.nilaiTarget) || null,
         satuan,
+        linkFile: '',
+        namaFile: '',
         periode: t.tahun,
-        statusValidasi: t.statusValidasi || 'draft',
-        catatan: t.catatan,
+        statusValidasi: this.mapStatus(t.statusValidasi),
+        catatanAdmin: t.catatan ?? null,
       });
     }
     return results;
   }
 
   async updateValidationStatus(id: number, status: 'pending' | 'approved' | 'rejected', catatanAdmin?: string): Promise<any> {
-    const mappedStatus = status === 'pending' ? 'diajukan' : status === 'approved' ? 'disetujui' : 'ditolak';
+    const mappedStatus = status === 'approved' ? 'disetujui' : status === 'rejected' ? 'ditolak' : 'diajukan';
     await this.targetUnitRepo.update(id, { statusValidasi: mappedStatus, catatan: catatanAdmin || null });
     const target = await this.targetUnitRepo.findOne({ where: { id }, relations: ['indikator', 'role'] });
     if (!target) throw new Error('Target not found');
@@ -422,11 +433,13 @@ export class TargetsService {
       roleNama: target.role?.name || '',
       namaIndikator: target.indikator?.nama || '',
       kodeIndikator: target.indikator?.kode || '',
-      nilaiTarget: Number(target.nilaiTarget) || null,
+      targetKuantitas: Number(target.nilaiTarget) || null,
       satuan,
+      linkFile: '',
+      namaFile: '',
       periode: target.tahun,
-      statusValidasi: target.statusValidasi,
-      catatan: target.catatan,
+      statusValidasi: this.mapStatus(target.statusValidasi),
+      catatanAdmin: target.catatan ?? null,
     };
   }
 }

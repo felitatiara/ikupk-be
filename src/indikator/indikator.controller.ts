@@ -126,6 +126,11 @@ export class IndikatorController {
     return this.indikatorService.saveCascadeChain(id, body.chain);
   }
 
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.indikatorService.findOne(id);
+  }
+
   @Delete('all')
   @HttpCode(204)
   removeAll(@Query('tahun') tahun?: string) {

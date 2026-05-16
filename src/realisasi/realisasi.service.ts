@@ -40,7 +40,7 @@ export class RealisasiService {
     return list.map((r) => ({
       id: r.id,
       tahun: r.tahun || '',
-      target: r.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kerja',
+      target: r.indikator?.jenis?.toUpperCase() === 'IKU' ? 'Indikator Kinerja Utama' : 'Perjanjian Kinerja',
       sasaranStrategis: r.indikator?.nama || '',
       realisasiAngka: Number(r.realisasiAngka),
       status: r.status,

@@ -1,4 +1,9 @@
-import { Injectable, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Indikator } from './indikator.entity';
@@ -51,8 +56,14 @@ export class IndikatorService {
     // Enforce level max per jenis
     const jenis = data.jenis?.toUpperCase() ?? '';
     const maxLevel = MAX_LEVEL[jenis];
-    if (maxLevel !== undefined && data.level !== undefined && data.level > maxLevel) {
-      throw new ConflictException(`Level maksimum untuk ${jenis} adalah ${maxLevel}`);
+    if (
+      maxLevel !== undefined &&
+      data.level !== undefined &&
+      data.level > maxLevel
+    ) {
+      throw new ConflictException(
+        `Level maksimum untuk ${jenis} adalah ${maxLevel}`,
+      );
     }
     const t = this.indikatorRepository.create(data);
     return this.indikatorRepository.save(t);
@@ -61,22 +72,35 @@ export class IndikatorService {
   async getCascadeChain(id: number): Promise<number[]> {
     const ind = await this.indikatorRepository.findOneBy({ id });
     if (!ind || !ind.cascadeChain) return [];
-    try { return JSON.parse(ind.cascadeChain); } catch { return []; }
+    try {
+      return JSON.parse(ind.cascadeChain);
+    } catch {
+      return [];
+    }
   }
 
-  async saveCascadeChain(id: number, chain: number[]): Promise<{ success: boolean }> {
-    await this.indikatorRepository.update(id, { cascadeChain: JSON.stringify(chain) });
+  async saveCascadeChain(
+    id: number,
+    chain: number[],
+  ): Promise<{ success: boolean }> {
+    await this.indikatorRepository.update(id, {
+      cascadeChain: JSON.stringify(chain),
+    });
     return { success: true };
   }
 
-  async update(id: number, data: Partial<Indikator>): Promise<Indikator | null> {
+  async update(
+    id: number,
+    data: Partial<Indikator>,
+  ): Promise<Indikator | null> {
     await this.indikatorRepository.update(id, data);
     return this.findOne(id);
   }
 
   async remove(id: number): Promise<void> {
     const indikator = await this.indikatorRepository.findOneBy({ id });
-    if (!indikator) throw new NotFoundException(`Indikator ID ${id} tidak ditemukan`);
+    if (!indikator)
+      throw new NotFoundException(`Indikator ID ${id} tidak ditemukan`);
     await this.indikatorRepository.delete(id);
   }
 
@@ -111,12 +135,19 @@ export class IndikatorService {
    * Copy semua indikator dari satu tahun ke tahun baru.
    * Berguna saat struktur indikator tidak banyak berubah tahun ke tahun.
    */
-  async copyFromYear(fromTahun: string, toTahun: string): Promise<{ copied: number }> {
+  async copyFromYear(
+    fromTahun: string,
+    toTahun: string,
+  ): Promise<{ copied: number }> {
     if (isPastYear(toTahun)) {
-      throw new ForbiddenException(`Tidak bisa copy ke tahun ${toTahun} karena sudah lampau`);
+      throw new ForbiddenException(
+        `Tidak bisa copy ke tahun ${toTahun} karena sudah lampau`,
+      );
     }
 
-    const existing = await this.indikatorRepository.find({ where: { tahun: toTahun } });
+    const existing = await this.indikatorRepository.find({
+      where: { tahun: toTahun },
+    });
     if (existing.length > 0) {
       throw new ConflictException(
         `Indikator untuk tahun ${toTahun} sudah ada (${existing.length} data). Hapus dulu sebelum copy.`,
@@ -129,7 +160,9 @@ export class IndikatorService {
     });
 
     if (sourceIndikators.length === 0) {
-      throw new NotFoundException(`Tidak ada indikator untuk tahun ${fromTahun}`);
+      throw new NotFoundException(
+        `Tidak ada indikator untuk tahun ${fromTahun}`,
+      );
     }
 
     // Copy level per level agar parent_id bisa di-remap dengan benar
@@ -137,7 +170,8 @@ export class IndikatorService {
     for (let lvl = 0; lvl <= 3; lvl++) {
       const items = sourceIndikators.filter((i) => i.level === lvl);
       for (const src of items) {
-        const newParentId = src.parentId != null ? (idMap.get(src.parentId) ?? null) : null;
+        const newParentId =
+          src.parentId != null ? (idMap.get(src.parentId) ?? null) : null;
         const saved = await this.indikatorRepository.save(
           this.indikatorRepository.create({
             jenis: src.jenis,
@@ -169,7 +203,9 @@ export class IndikatorService {
       const ind = allIndikators.find((i) => i.id === currentId);
       if (!ind) return null;
       if (ind.jenisData) {
-        const bl = await this.baselineRepo.findOne({ where: { jenisData: ind.jenisData, tahun } });
+        const bl = await this.baselineRepo.findOne({
+          where: { jenisData: ind.jenisData, tahun },
+        });
         if (bl) return Number(bl.jumlah);
       }
       currentId = ind.parentId ?? null;
@@ -198,17 +234,25 @@ export class IndikatorService {
         let nilaiTarget: number | null = null;
         let targetId: number | null = null;
         if (roleId) {
-          const ut = await this.targetUnitRepo.findOne({ where: { indikatorId: l1.id, roleId, tahun } });
+          const ut = await this.targetUnitRepo.findOne({
+            where: { indikatorId: l1.id, roleId, tahun },
+          });
           nilaiTarget = ut ? Number(ut.nilaiTarget) : null;
           targetId = ut?.id ?? null;
         }
         if (nilaiTarget === null) {
-          const ut = await this.targetUnitRepo.findOne({ where: { indikatorId: l1.id, tahun } });
+          const ut = await this.targetUnitRepo.findOne({
+            where: { indikatorId: l1.id, tahun },
+          });
           nilaiTarget = ut ? Number(ut.nilaiTarget) : null;
           if (!targetId) targetId = ut?.id ?? null;
         }
 
-        const baselineJumlahSub = await this.findBaselineForIndikator(l1.id, tahun, all);
+        const baselineJumlahSub = await this.findBaselineForIndikator(
+          l1.id,
+          tahun,
+          all,
+        );
 
         subIndikators.push({
           id: l1.id,
@@ -227,18 +271,24 @@ export class IndikatorService {
               let childTargetId: number | null = null;
               let childSatuan: string | null = null;
               if (roleId) {
-                const ct = await this.targetUnitRepo.findOne({ where: { indikatorId: l2.id, roleId, tahun } });
+                const ct = await this.targetUnitRepo.findOne({
+                  where: { indikatorId: l2.id, roleId, tahun },
+                });
                 childNilaiTarget = ct ? Number(ct.nilaiTarget) : null;
                 childTargetId = ct?.id ?? null;
               }
               if (childNilaiTarget === null) {
-                const ct = await this.targetUnitRepo.findOne({ where: { indikatorId: l2.id, tahun } });
+                const ct = await this.targetUnitRepo.findOne({
+                  where: { indikatorId: l2.id, tahun },
+                });
                 childNilaiTarget = ct ? Number(ct.nilaiTarget) : null;
                 if (!childTargetId) childTargetId = ct?.id ?? null;
               }
               // Fallback: cek target_universitas (target yang di-set admin di master indikator)
               if (childNilaiTarget === null) {
-                const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l2.id, tahun } });
+                const uniT = await this.targetUniRepo.findOne({
+                  where: { indikatorId: l2.id, tahun },
+                });
                 if (uniT) {
                   childNilaiTarget = Number(uniT.persentase);
                   if (!childTargetId) childTargetId = uniT.id;
@@ -247,8 +297,14 @@ export class IndikatorService {
               }
 
               // Level 3 — hanya PK
-              const level3 = all.filter((i) => i.level === 3 && i.parentId === l2.id);
-              const childBaseline = await this.findBaselineForIndikator(l2.id, tahun, all);
+              const level3 = all.filter(
+                (i) => i.level === 3 && i.parentId === l2.id,
+              );
+              const childBaseline = await this.findBaselineForIndikator(
+                l2.id,
+                tahun,
+                all,
+              );
 
               return {
                 id: l2.id,
@@ -264,7 +320,9 @@ export class IndikatorService {
                 children: await Promise.all(
                   level3.map(async (l3) => {
                     // PK: target disimpan di target_universitas per L3
-                    const l3UniTarget = await this.targetUniRepo.findOne({ where: { indikatorId: l3.id, tahun } });
+                    const l3UniTarget = await this.targetUniRepo.findOne({
+                      where: { indikatorId: l3.id, tahun },
+                    });
                     return {
                       id: l3.id,
                       kode: l3.kode,
@@ -272,7 +330,9 @@ export class IndikatorService {
                       level: l3.level,
                       tahun: l3.tahun,
                       targetId: l3UniTarget?.id ?? null,
-                      nilaiTarget: l3UniTarget ? Number(l3UniTarget.persentase) : null,
+                      nilaiTarget: l3UniTarget
+                        ? Number(l3UniTarget.persentase)
+                        : null,
                       tenggat: l3UniTarget?.tenggat ?? null,
                       satuan: l3UniTarget?.satuan ?? null,
                       sumberData: String(l3.sumberData || 'repository'),
@@ -285,14 +345,23 @@ export class IndikatorService {
         });
       }
 
-      const uniTarget = await this.targetUniRepo.findOne({ where: { indikatorId: root.id, tahun } });
-      const rootBaseline = await this.findBaselineForIndikator(root.id, tahun, all);
+      const uniTarget = await this.targetUniRepo.findOne({
+        where: { indikatorId: root.id, tahun },
+      });
+      const rootBaseline = await this.findBaselineForIndikator(
+        root.id,
+        tahun,
+        all,
+      );
 
       const storedTarget = uniTarget ? Number(uniTarget.persentase) : null;
       // If a baseline exists use percentage formula; otherwise treat stored value as absolute
-      const targetAbsolut = storedTarget !== null
-        ? (rootBaseline ? Math.round((storedTarget / 100) * rootBaseline) : storedTarget)
-        : null;
+      const targetAbsolut =
+        storedTarget !== null
+          ? rootBaseline
+            ? Math.round((storedTarget / 100) * rootBaseline)
+            : storedTarget
+          : null;
 
       result.push({
         id: root.id,
@@ -311,15 +380,22 @@ export class IndikatorService {
     return result;
   }
 
-  async findGroupedForUser(jenis: string, tahun: string, userId: number, roleId: number) {
-    const disposisis = await this.disposisiRepo.find({ where: { toUserId: userId, tahun } });
-    if (disposisis.length === 0) return [];
-
-    const receivedFromOthers = disposisis.filter(d => d.fromUserId !== userId);
-    if (receivedFromOthers.length === 0) return [];
+  async findGroupedForUser(
+    jenis: string,
+    tahun: string,
+    userId: number,
+    roleId: number,
+  ) {
+    const disposisis = await this.disposisiRepo.find({
+      where: { toUserId: userId, tahun },
+    });
 
     // Mulai dari jumlah yang diterima dari atasan sebagai default
     const disposisiByIndikator = new Map<number, number>();
+
+    const receivedFromOthers = disposisis.filter(
+      (d) => d.fromUserId !== userId,
+    );
     for (const d of receivedFromOthers) {
       disposisiByIndikator.set(
         d.indikatorId,
@@ -329,17 +405,73 @@ export class IndikatorService {
 
     // Jika user mendisposisikan ke diri sendiri, tampilkan jumlah self-disposisi
     // sebagai target personal (bukan jumlah total yang diterima dari atasan)
-    const selfDisposisis = disposisis.filter(d => d.fromUserId === userId);
+    const selfDisposisis = disposisis.filter((d) => d.fromUserId === userId);
     for (const d of selfDisposisis) {
-      disposisiByIndikator.set(
-        d.indikatorId,
-        Number(d.jumlahTarget),
-      );
+      disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
     }
 
-    const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
+    // Auto-cascade: jika roleId user ada dalam cascadeChain suatu L0,
+    // otomatis terima semua L1 di bawahnya tanpa disposisi manual
+    const allInds = await this.indikatorRepository.find({
+      where: { jenis, tahun },
+    });
+    const l0s = allInds.filter((i) => i.level === 0);
+    const cascadedL0Ids = new Set<number>();
+    for (const l0 of l0s) {
+      if (!l0.cascadeChain) continue;
+      try {
+        const chain = (JSON.parse(l0.cascadeChain) as unknown[]).map(Number);
+        if (chain[0] === Number(roleId)) cascadedL0Ids.add(l0.id);
+      } catch {
+        /* skip malformed chain */
+      }
+    }
 
     const fullGrouped = await this.findGrouped(jenis, tahun, roleId);
+
+    if (cascadedL0Ids.size > 0) {
+      type CascadeLeaf = {
+        id: number;
+        nilaiTarget: number | null;
+        children?: CascadeLeaf[];
+      };
+      type CascadeGroup = {
+        id: number;
+        subIndikators: Array<CascadeLeaf & { children?: CascadeLeaf[] }>;
+      };
+      const typedGrouped = fullGrouped as CascadeGroup[];
+      for (const group of typedGrouped) {
+        if (!cascadedL0Ids.has(group.id)) continue;
+        for (const sub of group.subIndikators) {
+          // Cascade L2 children dulu — nilaiTarget berisi fallback dari target_universitas
+          for (const child of sub.children ?? []) {
+            if (
+              !disposisiByIndikator.has(child.id) &&
+              child.nilaiTarget != null
+            ) {
+              disposisiByIndikator.set(child.id, Number(child.nilaiTarget));
+            }
+            // Cascade ke L3 grandchildren (PK)
+            for (const gc of child.children ?? []) {
+              if (!disposisiByIndikator.has(gc.id) && gc.nilaiTarget != null) {
+                disposisiByIndikator.set(gc.id, Number(gc.nilaiTarget));
+              }
+            }
+          }
+          // L1 target: gunakan target_unit jika ada, jika tidak jumlahkan L2 children
+          if (!disposisiByIndikator.has(sub.id)) {
+            const childSum = (sub.children ?? [])
+              .filter((c: CascadeLeaf) => c.nilaiTarget != null)
+              .reduce((s: number, c: CascadeLeaf) => s + Number(c.nilaiTarget), 0);
+            disposisiByIndikator.set(sub.id, sub.nilaiTarget ?? childSum);
+          }
+        }
+      }
+    }
+
+    if (disposisiByIndikator.size === 0) return [];
+
+    const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
     const filtered: any[] = [];
 
     for (const group of fullGrouped) {
@@ -348,23 +480,40 @@ export class IndikatorService {
         const isSubAssigned = assignedIndikatorIds.has(sub.id);
 
         // level-2 children that are directly assigned
-        const filteredChildren = sub.children.map((c: any) => {
-          const isChildAssigned = assignedIndikatorIds.has(c.id);
-          // level-3 grandchildren that are assigned (PK rincian)
-          const filteredGrandchildren = (c.children ?? [])
-            .filter((gc: any) => assignedIndikatorIds.has(gc.id))
-            .map((gc: any) => ({ ...gc, disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null }));
+        const filteredChildren = sub.children
+          .map((c: any) => {
+            const isChildAssigned = assignedIndikatorIds.has(c.id);
+            // level-3 grandchildren that are assigned (PK rincian)
+            const filteredGrandchildren = (c.children ?? [])
+              .filter((gc: any) => assignedIndikatorIds.has(gc.id))
+              .map((gc: any) => ({
+                ...gc,
+                disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+              }));
 
-          if (isChildAssigned) {
-            return { ...c, disposisiJumlah: disposisiByIndikator.get(c.id) ?? null };
-          } else if (filteredGrandchildren.length > 0) {
-            return { ...c, children: filteredGrandchildren };
-          }
-          return null;
-        }).filter(Boolean);
+            if (isChildAssigned) {
+              return {
+                ...c,
+                disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+              };
+            } else if (filteredGrandchildren.length > 0) {
+              return { ...c, children: filteredGrandchildren };
+            }
+            return null;
+          })
+          .filter(Boolean);
 
         if (isSubAssigned) {
-          filteredSubs.push({ ...sub, disposisiJumlah: disposisiByIndikator.get(sub.id) ?? null });
+          // Enrich all L2 children with disposisiJumlah from cascade map
+          const enrichedChildren = (sub.children ?? []).map((c: any) => ({
+            ...c,
+            disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+          }));
+          filteredSubs.push({
+            ...sub,
+            disposisiJumlah: disposisiByIndikator.get(sub.id) ?? null,
+            children: enrichedChildren,
+          });
         } else if (filteredChildren.length > 0) {
           filteredSubs.push({ ...sub, children: filteredChildren });
         }
@@ -378,8 +527,8 @@ export class IndikatorService {
     const allTargetIds = new Set<number>([...assignedIndikatorIds]);
     for (const group of filtered) {
       for (const sub of group.subIndikators) {
-        for (const child of (sub.children ?? [])) {
-          for (const gc of (child.children ?? [])) {
+        for (const child of sub.children ?? []) {
+          for (const gc of child.children ?? []) {
             allTargetIds.add(gc.id);
           }
         }
@@ -397,9 +546,16 @@ export class IndikatorService {
         .andWhere('r.tahun = :tahun', { tahun })
         .getMany();
       for (const r of realisasiList) {
-        realisasiMap.set(r.indikatorId, (realisasiMap.get(r.indikatorId) ?? 0) + Number(r.realisasiAngka));
+        realisasiMap.set(
+          r.indikatorId,
+          (realisasiMap.get(r.indikatorId) ?? 0) + Number(r.realisasiAngka),
+        );
         if (r.validFileCount !== null) {
-          validRealisasiMap.set(r.indikatorId, (validRealisasiMap.get(r.indikatorId) ?? 0) + Number(r.validFileCount));
+          validRealisasiMap.set(
+            r.indikatorId,
+            (validRealisasiMap.get(r.indikatorId) ?? 0) +
+              Number(r.validFileCount),
+          );
         }
       }
     }
@@ -410,10 +566,10 @@ export class IndikatorService {
         let subReal = realisasiMap.get(sub.id) ?? 0;
         let subValid: number | null = validRealisasiMap.get(sub.id) ?? null;
 
-        for (const child of (sub.children ?? [])) {
+        for (const child of sub.children ?? []) {
           child.realisasiJumlah = realisasiMap.get(child.id) ?? 0;
           child.validRealisasiJumlah = validRealisasiMap.get(child.id) ?? null;
-          for (const gc of (child.children ?? [])) {
+          for (const gc of child.children ?? []) {
             const gcReal = realisasiMap.get(gc.id) ?? 0;
             const gcValid = validRealisasiMap.get(gc.id) ?? null;
             gc.realisasiJumlah = gcReal;
@@ -431,13 +587,19 @@ export class IndikatorService {
     return filtered;
   }
 
-  async findPengajuanGrouped(jenis: string, tahun: string, roleId: number): Promise<any[]> {
+  async findPengajuanGrouped(
+    jenis: string,
+    tahun: string,
+    roleId: number,
+  ): Promise<any[]> {
     const grouped = await this.findGrouped(jenis, tahun, roleId);
     const result: any[] = [];
     for (const group of grouped) {
       if (group.persentaseTarget === null) continue;
       const allFilled = group.subIndikators.every((s: any) =>
-        s.children.every((c: any) => c.nilaiTarget !== null && c.nilaiTarget !== undefined),
+        s.children.every(
+          (c: any) => c.nilaiTarget !== null && c.nilaiTarget !== undefined,
+        ),
       );
       result.push({
         ...group,
@@ -464,7 +626,9 @@ export class IndikatorService {
     const grouped = await this.findGrouped(jenis, tahun, roleId);
 
     // Ambil semua indikator ID untuk jenis dan tahun ini
-    const allIndikators = await this.indikatorRepository.find({ where: { jenis, tahun } });
+    const allIndikators = await this.indikatorRepository.find({
+      where: { jenis, tahun },
+    });
     const allIds = allIndikators.map((i) => i.id);
 
     // Ambil realisasi untuk semua indikator
@@ -489,7 +653,10 @@ export class IndikatorService {
     }
 
     // Hitung kualitas (%) dari nilaiTarget / baseline * 100
-    const calcKualitas = (nilai: number | null, baseline: number | null): number | null => {
+    const calcKualitas = (
+      nilai: number | null,
+      baseline: number | null,
+    ): number | null => {
       if (!nilai || !baseline || baseline === 0) return null;
       return Number(((nilai / baseline) * 100).toFixed(1));
     };
@@ -503,16 +670,30 @@ export class IndikatorService {
         node.nilaiTarget && node.nilaiTarget > 0
           ? Number(((realisasiKuantitas / node.nilaiTarget) * 100).toFixed(1))
           : 0;
-      return { ...node, realisasiKuantitas, realisasiKualitas, targetKualitas, persenCapaian };
+      return {
+        ...node,
+        realisasiKuantitas,
+        realisasiKualitas,
+        targetKualitas,
+        persenCapaian,
+      };
     };
 
     return grouped.map((group) => {
       const enrichedSubs = (group.subIndikators ?? []).map((sub: any) => {
         const enrichedSub = enrichNode(sub, group.baselineJumlah);
         const enrichedChildren = (sub.children ?? []).map((child: any) => {
-          const enrichedChild = enrichNode(child, sub.baselineJumlah ?? group.baselineJumlah);
+          const enrichedChild = enrichNode(
+            child,
+            sub.baselineJumlah ?? group.baselineJumlah,
+          );
           const enrichedL3 = (child.children ?? []).map((l3: any) =>
-            enrichNode(l3, child.baselineJumlah ?? sub.baselineJumlah ?? group.baselineJumlah),
+            enrichNode(
+              l3,
+              child.baselineJumlah ??
+                sub.baselineJumlah ??
+                group.baselineJumlah,
+            ),
           );
           return { ...enrichedChild, children: enrichedL3 };
         });
@@ -521,9 +702,13 @@ export class IndikatorService {
 
       // Hitung S.D (progres kumulatif sasaran) = total realisasi / targetAbsolut * 100
       const totalRealisasi = enrichedSubs.reduce((acc: number, sub: any) => {
-        const subVal = sub.realisasiKuantitas > 0
-          ? sub.realisasiKuantitas
-          : sub.children.reduce((a: number, c: any) => a + (c.realisasiKuantitas ?? 0), 0);
+        const subVal =
+          sub.realisasiKuantitas > 0
+            ? sub.realisasiKuantitas
+            : sub.children.reduce(
+                (a: number, c: any) => a + (c.realisasiKuantitas ?? 0),
+                0,
+              );
         return acc + subVal;
       }, 0);
       const sdPersen =
@@ -535,9 +720,20 @@ export class IndikatorService {
     });
   }
 
-  async getMonitoringBawahan(jenis: string, tahun: string, userId: number, roleLevel: number) {
+  async getMonitoringBawahan(
+    jenis: string,
+    tahun: string,
+    userId: number,
+    roleLevel: number,
+  ) {
     // 1. Ambil daftar bawahan berdasarkan level role
-    type BawahanItem = { id: number; nama: string; roleName: string; roleLevel: number; unitNama: string | null };
+    type BawahanItem = {
+      id: number;
+      nama: string;
+      roleName: string;
+      roleLevel: number;
+      unitNama: string | null;
+    };
     const bawahanList: BawahanItem[] = [];
 
     if (roleLevel <= 1) {
@@ -550,7 +746,13 @@ export class IndikatorService {
       for (const ur of userRoles) {
         if (ur.user && ur.role && ur.role.level >= 2 && !seen.has(ur.user.id)) {
           seen.add(ur.user.id);
-          bawahanList.push({ id: ur.user.id, nama: ur.user.nama, roleName: ur.role.name, roleLevel: ur.role.level, unitNama: ur.role.unitNama ?? null });
+          bawahanList.push({
+            id: ur.user.id,
+            nama: ur.user.nama,
+            roleName: ur.role.name,
+            roleLevel: ur.role.level,
+            unitNama: ur.role.unitNama ?? null,
+          });
         }
       }
     } else {
@@ -561,23 +763,41 @@ export class IndikatorService {
       });
       for (const rel of relations) {
         if (!rel.user) continue;
-        const pr = rel.user.userRoles?.find((ur) => ur.isPrimary) ?? rel.user.userRoles?.[0];
-        bawahanList.push({ id: rel.user.id, nama: rel.user.nama, roleName: pr?.role?.name ?? '', roleLevel: pr?.role?.level ?? 4, unitNama: pr?.role?.unitNama ?? null });
+        const pr =
+          rel.user.userRoles?.find((ur) => ur.isPrimary) ??
+          rel.user.userRoles?.[0];
+        bawahanList.push({
+          id: rel.user.id,
+          nama: rel.user.nama,
+          roleName: pr?.role?.name ?? '',
+          roleLevel: pr?.role?.level ?? 4,
+          unitNama: pr?.role?.unitNama ?? null,
+        });
       }
     }
 
     const bawahanIds = bawahanList.map((b) => b.id);
 
     // 2. Bangun baris dari leaf indikator
-    const all = await this.indikatorRepository.find({ where: { jenis, tahun }, order: { kode: 'ASC' } });
+    const all = await this.indikatorRepository.find({
+      where: { jenis, tahun },
+      order: { kode: 'ASC' },
+    });
     const roots = all.filter((i) => i.level === 0);
     const isPK = jenis.toUpperCase() === 'PK';
 
     type LeafRow = {
-      groupId: number; groupKode: string; groupNama: string;
-      subId: number; subKode: string; subNama: string;
-      leafId: number; leafKode: string; leafNama: string;
-      nilaiTarget: number | null; satuan: string | null;
+      groupId: number;
+      groupKode: string;
+      groupNama: string;
+      subId: number;
+      subKode: string;
+      subNama: string;
+      leafId: number;
+      leafKode: string;
+      leafNama: string;
+      nilaiTarget: number | null;
+      satuan: string | null;
       disposisiByUser: Record<number, number>;
     };
     const leafRows: LeafRow[] = [];
@@ -588,15 +808,47 @@ export class IndikatorService {
         const level2 = all.filter((i) => i.level === 2 && i.parentId === l1.id);
         if (!isPK) {
           for (const l2 of level2) {
-            const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l2.id, tahun } });
-            leafRows.push({ groupId: root.id, groupKode: root.kode, groupNama: root.nama, subId: l1.id, subKode: l1.kode, subNama: l1.nama, leafId: l2.id, leafKode: l2.kode, leafNama: l2.nama, nilaiTarget: uniT ? Number(uniT.persentase) : null, satuan: uniT?.satuan ?? null, disposisiByUser: {} });
+            const uniT = await this.targetUniRepo.findOne({
+              where: { indikatorId: l2.id, tahun },
+            });
+            leafRows.push({
+              groupId: root.id,
+              groupKode: root.kode,
+              groupNama: root.nama,
+              subId: l1.id,
+              subKode: l1.kode,
+              subNama: l1.nama,
+              leafId: l2.id,
+              leafKode: l2.kode,
+              leafNama: l2.nama,
+              nilaiTarget: uniT ? Number(uniT.persentase) : null,
+              satuan: uniT?.satuan ?? null,
+              disposisiByUser: {},
+            });
           }
         } else {
           for (const l2 of level2) {
-            const level3 = all.filter((i) => i.level === 3 && i.parentId === l2.id);
+            const level3 = all.filter(
+              (i) => i.level === 3 && i.parentId === l2.id,
+            );
             for (const l3 of level3) {
-              const uniT = await this.targetUniRepo.findOne({ where: { indikatorId: l3.id, tahun } });
-              leafRows.push({ groupId: root.id, groupKode: root.kode, groupNama: root.nama, subId: l1.id, subKode: l1.kode, subNama: l1.nama, leafId: l3.id, leafKode: l3.kode, leafNama: l3.nama, nilaiTarget: uniT ? Number(uniT.persentase) : null, satuan: uniT?.satuan ?? null, disposisiByUser: {} });
+              const uniT = await this.targetUniRepo.findOne({
+                where: { indikatorId: l3.id, tahun },
+              });
+              leafRows.push({
+                groupId: root.id,
+                groupKode: root.kode,
+                groupNama: root.nama,
+                subId: l1.id,
+                subKode: l1.kode,
+                subNama: l1.nama,
+                leafId: l3.id,
+                leafKode: l3.kode,
+                leafNama: l3.nama,
+                nilaiTarget: uniT ? Number(uniT.persentase) : null,
+                satuan: uniT?.satuan ?? null,
+                disposisiByUser: {},
+              });
             }
           }
         }
@@ -605,10 +857,14 @@ export class IndikatorService {
 
     // 3. Isi data disposisi per bawahan
     if (bawahanIds.length > 0) {
-      const disposisiList = await this.disposisiRepo.find({ where: { toUserId: In(bawahanIds), tahun } });
+      const disposisiList = await this.disposisiRepo.find({
+        where: { toUserId: In(bawahanIds), tahun },
+      });
       for (const d of disposisiList) {
         const row = leafRows.find((r) => r.leafId === d.indikatorId);
-        if (row) row.disposisiByUser[d.toUserId] = (row.disposisiByUser[d.toUserId] ?? 0) + Number(d.jumlahTarget);
+        if (row)
+          row.disposisiByUser[d.toUserId] =
+            (row.disposisiByUser[d.toUserId] ?? 0) + Number(d.jumlahTarget);
       }
     }
 

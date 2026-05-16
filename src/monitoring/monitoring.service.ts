@@ -31,13 +31,19 @@ export class MonitoringService {
     private readonly disposisiRepository: Repository<Disposisi>,
   ) {}
 
-  private async getBaseline(indikatorId: number, tahun: string, allIndikators: Indikator[]): Promise<number | null> {
+  private async getBaseline(
+    indikatorId: number,
+    tahun: string,
+    allIndikators: Indikator[],
+  ): Promise<number | null> {
     let currentId: number | null = indikatorId;
     while (currentId !== null) {
       const ind = allIndikators.find((i) => i.id === currentId);
       if (!ind) break;
       if (ind.jenisData) {
-        const bl = await this.baselineRepository.findOne({ where: { jenisData: ind.jenisData, tahun } });
+        const bl = await this.baselineRepository.findOne({
+          where: { jenisData: ind.jenisData, tahun },
+        });
         if (bl) return Number(bl.jumlah);
       }
       currentId = ind.parentId ?? null;
@@ -48,7 +54,9 @@ export class MonitoringService {
   /** Collect all leaf indikator IDs under a given parent based on jenis */
   private async getLeafIds(parentId: number, jenis: string): Promise<number[]> {
     const leafLevel = jenis === 'PK' ? 3 : 2;
-    const children = await this.indikatorRepository.find({ where: { parentId } });
+    const children = await this.indikatorRepository.find({
+      where: { parentId },
+    });
     if (children.length === 0) return [parentId];
     const leafIds: number[] = [];
     for (const child of children) {
@@ -64,7 +72,9 @@ export class MonitoringService {
 
   /** Collect ALL descendant indikator IDs (any level) under a parent */
   private async getAllDescendantIds(parentId: number): Promise<number[]> {
-    const children = await this.indikatorRepository.find({ where: { parentId } });
+    const children = await this.indikatorRepository.find({
+      where: { parentId },
+    });
     const ids: number[] = [];
     for (const child of children) {
       ids.push(child.id);
@@ -91,13 +101,20 @@ export class MonitoringService {
     const results: any[] = [];
 
     for (const l0 of level0Indikators) {
-      const uniTarget = await this.targetUniRepository.findOne({ where: { indikatorId: l0.id, tahun } });
+      const uniTarget = await this.targetUniRepository.findOne({
+        where: { indikatorId: l0.id, tahun },
+      });
       const baseline = await this.getBaseline(l0.id, tahun, allIndikators);
 
       const persentaseTarget = uniTarget ? Number(uniTarget.persentase) : 0;
-      const targetAbsolut = baseline != null ? Math.round((persentaseTarget / 100) * baseline) : null;
+      const targetAbsolut =
+        baseline != null
+          ? Math.round((persentaseTarget / 100) * baseline)
+          : null;
 
-      const level1Children = await this.indikatorRepository.find({ where: { parentId: l0.id, level: 1 } });
+      const level1Children = await this.indikatorRepository.find({
+        where: { parentId: l0.id, level: 1 },
+      });
 
       let sumTargetFak = 0;
       let sumRealisasi = 0;
@@ -108,23 +125,37 @@ export class MonitoringService {
         const realisasiList = await this.realisasiRepository.find({
           where: allDescendantIds.map((id) => ({ indikatorId: id, tahun })),
         });
-        sumRealisasi = realisasiList.reduce((s, r) => s + Number(r.realisasiAngka), 0);
+        sumRealisasi = realisasiList.reduce(
+          (s, r) => s + Number(r.realisasiAngka),
+          0,
+        );
       }
 
       if (jenis === 'IKU') {
         // Target unit at L1
         for (const l1 of level1Children) {
-          const unitTargets = await this.targetUnitRepository.find({ where: { indikatorId: l1.id, tahun } });
-          sumTargetFak += unitTargets.reduce((s, t) => s + Number(t.nilaiTarget || 0), 0);
+          const unitTargets = await this.targetUnitRepository.find({
+            where: { indikatorId: l1.id, tahun },
+          });
+          sumTargetFak += unitTargets.reduce(
+            (s, t) => s + Number(t.nilaiTarget || 0),
+            0,
+          );
         }
       } else {
         // PK: target universitas at L3 (diinput saat tambah indikator per rincian)
         for (const l1 of level1Children) {
-          const l2s = await this.indikatorRepository.find({ where: { parentId: l1.id, level: 2 } });
+          const l2s = await this.indikatorRepository.find({
+            where: { parentId: l1.id, level: 2 },
+          });
           for (const l2 of l2s) {
-            const l3s = await this.indikatorRepository.find({ where: { parentId: l2.id, level: 3 } });
+            const l3s = await this.indikatorRepository.find({
+              where: { parentId: l2.id, level: 3 },
+            });
             for (const l3 of l3s) {
-              const l3Target = await this.targetUniRepository.findOne({ where: { indikatorId: l3.id, tahun } });
+              const l3Target = await this.targetUniRepository.findOne({
+                where: { indikatorId: l3.id, tahun },
+              });
               if (l3Target) sumTargetFak += Number(l3Target.persentase || 0);
             }
           }
@@ -145,15 +176,83 @@ export class MonitoringService {
         targetAbsolut != null && targetAbsolut > 0
           ? Math.min(100, Math.floor((sumRealisasi / targetAbsolut) * 100))
           : sumTargetFak > 0
-          ? Math.min(100, Math.floor((sumRealisasi / sumTargetFak) * 100))
-          : 0;
+            ? Math.min(100, Math.floor((sumRealisasi / sumTargetFak) * 100))
+            : 0;
+
+      // Build per-L1 sub-indikator data (with L2 children)
+      const subIndikators: any[] = [];
+      for (const l1 of level1Children) {
+        const l1DescendantIds = await this.getAllDescendantIds(l1.id);
+        let l1Realisasi = 0;
+        if (l1DescendantIds.length > 0) {
+          const l1RealisasiList = await this.realisasiRepository.find({
+            where: l1DescendantIds.map((id) => ({ indikatorId: id, tahun })),
+          });
+          l1Realisasi = l1RealisasiList.reduce(
+            (s, r) => s + Number(r.realisasiAngka),
+            0,
+          );
+        }
+        let l1TargetFak = 0;
+        if (jenis === 'IKU') {
+          const unitTargets = await this.targetUnitRepository.find({
+            where: { indikatorId: l1.id, tahun },
+          });
+          l1TargetFak = unitTargets.reduce(
+            (s, t) => s + Number(t.nilaiTarget || 0),
+            0,
+          );
+        }
+
+        // L2 children
+        const level2Children = await this.indikatorRepository.find({
+          where: { parentId: l1.id, level: 2 },
+          order: { kode: 'ASC' },
+        });
+        const l2Items: any[] = [];
+        for (const l2 of level2Children) {
+          const l2DescIds = await this.getAllDescendantIds(l2.id);
+          let l2Realisasi = 0;
+          if (l2DescIds.length > 0) {
+            const l2RealisasiList = await this.realisasiRepository.find({
+              where: l2DescIds.map((id) => ({ indikatorId: id, tahun })),
+            });
+            l2Realisasi = l2RealisasiList.reduce(
+              (s, r) => s + Number(r.realisasiAngka),
+              0,
+            );
+          }
+          const l2UniTarget = await this.targetUniRepository.findOne({
+            where: { indikatorId: l2.id, tahun },
+          });
+          l2Items.push({
+            id: l2.id,
+            kode: l2.kode,
+            nama: l2.nama,
+            realisasi: l2Realisasi,
+            nilaiTarget: l2UniTarget ? Number(l2UniTarget.persentase) : null,
+            satuan: l2UniTarget?.satuan ?? null,
+          });
+        }
+
+        subIndikators.push({
+          id: l1.id,
+          kode: l1.kode,
+          nama: l1.nama,
+          targetFakultas: l1TargetFak,
+          realisasi: l1Realisasi,
+          status:
+            l1TargetFak > 0 && l1Realisasi >= l1TargetFak ? 'Done' : 'Proses',
+          children: l2Items,
+        });
+      }
 
       results.push({
         id: l0.id,
         kode: l0.kode,
         nama: l0.nama,
         jenis: l0.jenis,
-        targetUniversitas: persentaseTarget,   // IKU: %; PK: nilai absolut
+        targetUniversitas: persentaseTarget, // IKU: %; PK: nilai absolut
         satuan: uniTarget?.satuan ?? null,
         targetAbsolut,
         baseline,
@@ -164,6 +263,7 @@ export class MonitoringService {
         status: tercapai ? 'Done' : 'Proses',
         progress,
         chartProgress: progress,
+        subIndikators,
       });
     }
 
@@ -174,7 +274,9 @@ export class MonitoringService {
    * Detail per indikator L0: list semua leaf realisasi dengan creator + files.
    */
   async getIndikatorDetail(indikatorId: number, tahun: string) {
-    const l0 = await this.indikatorRepository.findOne({ where: { id: indikatorId } });
+    const l0 = await this.indikatorRepository.findOne({
+      where: { id: indikatorId },
+    });
     if (!l0) return { indikator: null, entries: [] };
 
     // Use all descendant IDs so we find realisasi submitted at any level (L1, L2, or L3)
@@ -183,7 +285,9 @@ export class MonitoringService {
     const entries: any[] = [];
 
     for (const leafId of allIds) {
-      const indikator = await this.indikatorRepository.findOne({ where: { id: leafId } });
+      const indikator = await this.indikatorRepository.findOne({
+        where: { id: leafId },
+      });
       const realisasiList = await this.realisasiRepository.find({
         where: { indikatorId: leafId, tahun },
         relations: ['creator'],
@@ -218,7 +322,10 @@ export class MonitoringService {
       }
     }
 
-    return { indikator: { id: l0.id, kode: l0.kode, nama: l0.nama, jenis: l0.jenis }, entries };
+    return {
+      indikator: { id: l0.id, kode: l0.kode, nama: l0.nama, jenis: l0.jenis },
+      entries,
+    };
   }
 
   /**
@@ -283,9 +390,15 @@ export class MonitoringService {
         },
       });
 
-      const totalRealisasi = realisasiList.reduce((sum, r) => sum + Number(r.realisasiAngka), 0);
+      const totalRealisasi = realisasiList.reduce(
+        (sum, r) => sum + Number(r.realisasiAngka),
+        0,
+      );
       const nilaiTarget = Number(target.nilaiTarget || 0);
-      const progress = nilaiTarget > 0 ? Math.min(100, Math.floor((totalRealisasi / nilaiTarget) * 100)) : 0;
+      const progress =
+        nilaiTarget > 0
+          ? Math.min(100, Math.floor((totalRealisasi / nilaiTarget) * 100))
+          : 0;
 
       chartData.push({
         name: target.indikator?.kode || `Indikator ${target.indikatorId}`,

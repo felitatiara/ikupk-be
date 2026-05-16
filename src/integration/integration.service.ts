@@ -11,7 +11,7 @@ export class IntegrationService {
   /** Map jenis singkatan ke label folder di repository */
   private readonly jenisLabelMap: Record<string, string> = {
     IKU: 'Indikator Kinerja Utama',
-    PK: 'Perjanjian Kerja',
+    PK: 'Perjanjian Kinerja',
   };
 
   constructor(

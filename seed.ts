@@ -6,6 +6,7 @@ import { UserRelation } from './src/users/user_relation.entity';
 import { Indikator } from './src/indikator/indikator.entity';
 import { BaselineData } from './src/baseline_data/baseline_data.entity';
 import { TargetUniversitas } from './src/target/target.entity';
+import { TargetUnit } from './src/target/target-unit.entity';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -17,7 +18,7 @@ const AppDataSource = new DataSource({
   username: process.env.DATABASE_USERNAME || 'postgres',
   password: process.env.DATABASE_PASSWORD || 'postgres',
   database: process.env.DATABASE_NAME || 'iku_pk',
-  entities: [User, Role, UserRole, UserRelation, Indikator, BaselineData, TargetUniversitas],
+  entities: [User, Role, UserRole, UserRelation, Indikator, BaselineData, TargetUniversitas, TargetUnit],
   synchronize: true,
 });
 
@@ -53,16 +54,17 @@ async function upsertUserRole(repo: any, data: { userId: number; roleId: number;
   return await repo.save(repo.create(data));
 }
 
-async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: string; nama: string; level: number; parentId: number | null; jenisData?: string | null }) {
-  let existing = await repo.findOne({ where: { jenis: data.jenis, kode: data.kode } });
+async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: string; nama: string; tahun: string; level: number; parentId: number | null; jenisData?: string | null; sumberData?: string }) {
+  let existing = await repo.findOne({ where: { jenis: data.jenis, kode: data.kode, tahun: data.tahun } });
   if (existing) {
     existing.nama = data.nama;
     existing.level = data.level;
     existing.parentId = data.parentId;
-    existing.jenisData = data.jenisData || null;
+    existing.jenisData = data.jenisData ?? null;
+    if (data.sumberData) existing.sumberData = data.sumberData;
     return await repo.save(existing);
   }
-  return await repo.save(repo.create(data));
+  return await repo.save(repo.create({ ...data, jenisData: data.jenisData ?? null, sumberData: data.sumberData ?? 'ikupk' }));
 }
 
 async function seed() {
@@ -74,7 +76,6 @@ async function seed() {
   const userRoleRepo = AppDataSource.getRepository(UserRole);
   const userRelationRepo = AppDataSource.getRepository(UserRelation);
   const indikatorRepo = AppDataSource.getRepository(Indikator);
-  const baselineRepo = AppDataSource.getRepository(BaselineData);
   const targetRepo = AppDataSource.getRepository(TargetUniversitas);
 
   async function upsertUserRelation(userId: number, parentId: number) {
@@ -353,6 +354,106 @@ await upsertUserRole(userRoleRepo, { userId: dekanUser.id, roleId: dosenFIKRole.
   await upsertUserRelation(bayuWibisonoUser.id,      kaprodiD3SIUser.id);
   await upsertUserRelation(helenaNurramdhaniUser.id, kaprodiD3SIUser.id);
   // Tendik → Kabag (tidak ada kabag user di seed ini, skip)
+
+  // 5. Seed Indikator IKU & PK
+  console.log('Seeding Indikator...');
+  const TAHUN = '2026';
+  const ind = (data: Omit<Parameters<typeof findOrCreateIndikator>[1], 'tahun'>) =>
+    findOrCreateIndikator(indikatorRepo, { ...data, tahun: TAHUN });
+
+  // ─── IKU ──────────────────────────────────────────────────────────────────
+  const ikuSS1 = await ind({ jenis: 'IKU', kode: '1', nama: 'Talenta', level: 0, parentId: null });
+
+const iku1_1 = await ind({ jenis: 'IKU', kode: '1.1', nama: 'Angka Efisiensi Edukasi Perguruan Tinggi (AEE PT)', level: 1, parentId: ikuSS1.id });
+const iku1_2 = await ind({ jenis: 'IKU', kode: '1.2', nama: 'Persentase mahasiswa pascasarjana terhadap total mahasiswa', level: 1, parentId: ikuSS1.id });
+const iku1_3 = await ind({ jenis: 'IKU', kode: '1.3', nama: 'Persentase mahasiswa internasional', level: 1, parentId: ikuSS1.id });
+
+const iku1_1_1 = await ind({ jenis: 'IKU', kode: '1.1.1', nama: 'D3', level: 2, parentId: iku1_1.id });
+const iku1_1_2 = await ind({ jenis: 'IKU', kode: '1.1.2', nama: 'S1', level: 2, parentId: iku1_1.id });
+const iku1_1_3 = await ind({ jenis: 'IKU', kode: '1.1.3', nama: 'S2', level: 2, parentId: iku1_1.id });
+
+const iku1_2_1 = await ind({ jenis: 'IKU', kode: '1.2.1', nama: 'Mahasiswa magister', level: 2, parentId: iku1_2.id });
+const iku1_2_2 = await ind({ jenis: 'IKU', kode: '1.2.2', nama: 'Mahasiswa doktor', level: 2, parentId: iku1_2.id });
+
+const iku1_3_1 = await ind({ jenis: 'IKU', kode: '1.3.1', nama: 'Persentase mahasiswa internasional', level: 2, parentId: iku1_3.id });
+
+const ikuSS2 = await ind({ jenis: 'IKU', kode: '2', nama: 'Talenta', level: 0, parentId: null });
+
+const iku2_1 = await ind({ jenis: 'IKU', kode: '2.1', nama: 'Persentase lulusan pendidikan tinggi akademik dan vokasi yang langsung bekerja/melanjutkan jenjang pendidikan berikutnya/berwirausaha dalam jangka waktu 1 tahun setelah kelulusan', level: 1, parentId: ikuSS2.id });
+
+const iku2_1_1 = await ind({ jenis: 'IKU', kode: '2.1.1', nama: 'Persentase lulusan pendidikan tinggi akademik dan vokasi yang langsung bekerja/melanjutkan jenjang pendidikan berikutnya/berwirausaha dalam jangka waktu 1 tahun setelah kelulusan', level: 2, parentId: iku2_1.id });
+
+const ikuSS3 = await ind({ jenis: 'IKU', kode: '3', nama: 'Talenta', level: 0, parentId: null });
+
+const iku3_1 = await ind({ jenis: 'IKU', kode: '3.1', nama: 'Persentase mahasiswa S1 dan D4/D3/D2/D1 berkegiatan/meraih prestasi di luar program studi', level: 1, parentId: ikuSS3.id });
+
+const iku3_1_1 = await ind({ jenis: 'IKU', kode: '3.1.1', nama: 'Persentase mahasiswa S1 dan D4/D3/D2/D1 berkegiatan/meraih prestasi di luar program studi', level: 2, parentId: iku3_1.id });
+
+const ikuSS4 = await ind({ jenis: 'IKU', kode: '4', nama: 'Talenta', level: 0, parentId: null });
+
+const iku4_1 = await ind({ jenis: 'IKU', kode: '4.1', nama: 'Persentase dosen PT yang mendapatkan rekognisi internasional', level: 1, parentId: ikuSS4.id });
+const iku4_2 = await ind({ jenis: 'IKU', kode: '4.2', nama: 'Persentase dosen berpendidikan S3', level: 1, parentId: ikuSS4.id });
+
+const iku4_1_1 = await ind({ jenis: 'IKU', kode: '4.1.1', nama: 'Persentase dosen PT yang mendapatkan rekognisi internasional', level: 2, parentId: iku4_1.id });
+const iku4_2_1 = await ind({ jenis: 'IKU', kode: '4.2.1', nama: 'Persentase dosen berpendidikan S3', level: 2, parentId: iku4_2.id });
+
+const ikuSS5 = await ind({ jenis: 'IKU', kode: '5', nama: 'Inovasi', level: 0, parentId: null });
+const iku5_1 = await ind({ jenis: 'IKU', kode: '5.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat yang berhasil mendapat rekognisi internasional atau diterapkan oleh masyarakat per jumlah dosen', level: 1, parentId: ikuSS5.id });
+const iku5_1_1 = await ind({ jenis: 'IKU', kode: '5.1.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat', level: 2, parentId: iku5_1.id });
+
+const ikuSS6 = await ind({ jenis: 'IKU', kode: '6', nama: 'Inovasi', level: 0, parentId: null });
+const iku6_1 = await ind({ jenis: 'IKU', kode: '6.1', nama: 'Publikasi bereputasi internasional (Scopus/WoS)', level: 1, parentId: ikuSS6.id });
+const iku6_1_1 = await ind({ jenis: 'IKU', kode: '6.1.1', nama: 'Artikel Scopus/WoS', level: 2, parentId: iku6_1.id });
+const iku6_1_2 = await ind({ jenis: 'IKU', kode: '6.1.2', nama: 'Buku', level: 2, parentId: iku6_1.id });
+const iku6_1_3 = await ind({ jenis: 'IKU', kode: '6.1.3', nama: 'Prosiding Internasional', level: 2, parentId: iku6_1.id });
+const iku6_1_4 = await ind({ jenis: 'IKU', kode: '6.1.4', nama: 'HKI/Paten', level: 2, parentId: iku6_1.id });
+
+const ikuSS7 = await ind({ jenis: 'IKU', kode: '7', nama: 'Inovasi', level: 0, parentId: null });
+const iku7_1 = await ind({ jenis: 'IKU', kode: '7.1', nama: 'Persentase kegiatan penelitian dan pengabdian kepada masyarakat yang melibatkan mahasiswa', level: 1, parentId: ikuSS7.id });
+const iku7_1_1 = await ind({ jenis: 'IKU', kode: '7.1.1', nama: 'Buku', level: 2, parentId: iku7_1.id });
+const iku7_1_2 = await ind({ jenis: 'IKU', kode: '7.1.2', nama: 'Mata Kuliah', level: 2, parentId: iku7_1.id });
+const iku7_1_3 = await ind({ jenis: 'IKU', kode: '7.1.3', nama: 'Judul Penelitian', level: 2, parentId: iku7_1.id });
+const iku7_1_4 = await ind({ jenis: 'IKU', kode: '7.1.4', nama: 'Judul Pengabdian', level: 2, parentId: iku7_1.id });
+
+const ikuSS8 = await ind({ jenis: 'IKU', kode: '8', nama: 'Kontribusi pada Masyarakat', level: 0, parentId: null });
+const iku8_1 = await ind({ jenis: 'IKU', kode: '8.1', nama: 'Persentase SDM PT (dosen dan peneliti) yang terlibat langsung dalam penyusunan kebijakan (nasional/daerah/industri)', level: 1, parentId: ikuSS8.id });
+const iku8_1_1 = await ind({ jenis: 'IKU', kode: '8.1.1', nama: 'Persentase SDM PT (dosen dan peneliti) yang terlibat langsung dalam penyusunan kebijakan (nasional/daerah/industri)', level: 2, parentId: iku8_1.id });
+
+const ikuSS10 = await ind({ jenis: 'IKU', kode: '10', nama: 'Tata Kelola berintegritas', level: 0, parentId: null });
+const iku10_1 = await ind({ jenis: 'IKU', kode: '10.1', nama: 'Jumlah usulan Zona Integritas - WBK/WBBM', level: 1, parentId: ikuSS10.id });
+const iku10_1_1 = await ind({ jenis: 'IKU', kode: '10.1.1', nama: 'Jumlah usulan Zona Integritas - WBK/WBBM', level: 2, parentId: iku10_1.id });
+
+
+  // ─── Target ───────────────────────────────────────────────────────────────
+  console.log('Seeding Target...');
+
+  async function upsertTargetUniv(indId: number, persentase: number, satuan: string | null = null) {
+    const ex = await targetRepo.findOne({ where: { indikatorId: indId, tahun: TAHUN } });
+    if (ex) { ex.persentase = persentase; ex.satuan = satuan; return targetRepo.save(ex); }
+    return targetRepo.save(targetRepo.create({ indikatorId: indId, tahun: TAHUN, persentase, satuan }));
+  }
+
+  // ── Target Universitas per IKU (level 0) ─────────────────────────────────
+  // upsertTargetUnit membutuhkan roleId — set via web interface
+  await upsertTargetUniv(ikuSS1.id,  229, 'Lulusan');   // IKU 1: AEE PT
+  await upsertTargetUniv(ikuSS2.id,  256, 'Lulusan');   // IKU 2: Lulusan bekerja/studi lanjut
+  await upsertTargetUniv(ikuSS3.id,  605, 'Mahasiswa'); // IKU 3: Mhs MBKM
+  await upsertTargetUniv(ikuSS4.id,   17, 'Dosen');     // IKU 4: Dosen rekognisi internasional
+  await upsertTargetUniv(ikuSS5.id,   11, 'Luaran/IA'); // IKU 5: Luaran penelitian
+  await upsertTargetUniv(ikuSS6.id,    5, 'Artikel');   // IKU 6: Publikasi internasional
+  await upsertTargetUniv(ikuSS7.id,   27, 'Kegiatan');  // IKU 7: Kegiatan penelitian/pengabdian
+  await upsertTargetUniv(ikuSS8.id,   18, 'Dosen');     // IKU 8: SDM terlibat kebijakan
+  await upsertTargetUniv(ikuSS10.id,   1, 'Unit Kerja');// IKU 10: Zona Integritas
+
+  // Referensi variabel level-2 (digunakan saat buat TargetUnit via web/manual):
+  void iku1_1_1; void iku1_1_2; void iku1_1_3;
+  void iku1_2_1; void iku1_2_2; void iku1_3_1;
+  void iku2_1_1; void iku3_1_1;
+  void iku4_1_1; void iku4_2_1;
+  void iku5_1_1;
+  void iku6_1_1; void iku6_1_2; void iku6_1_3; void iku6_1_4;
+  void iku7_1_1; void iku7_1_2; void iku7_1_3; void iku7_1_4;
+  void iku8_1_1; void iku10_1_1;
 
   console.log('Seeding completed successfully!');
   await AppDataSource.destroy();
