@@ -2,11 +2,14 @@ import { Injectable, InternalServerErrorException, NotFoundException } from '@ne
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { Readable } from 'stream';
+import type { Response } from 'express';
 import { Indikator } from '../indikator/indikator.entity';
 
 @Injectable()
 export class IntegrationService {
   private readonly repoUrl: string;
+  private readonly selfUrl: string;
 
   /** Map jenis singkatan ke label folder di repository */
   private readonly jenisLabelMap: Record<string, string> = {
@@ -22,6 +25,9 @@ export class IntegrationService {
     this.repoUrl =
       this.configService.get<string>('REPOSITORY_NEST_URL') ||
       'http://localhost:3005';
+    this.selfUrl =
+      this.configService.get<string>('SELF_URL') ||
+      'http://localhost:4000';
   }
 
   private async get<T>(path: string, headers?: Record<string, string>): Promise<T> {
@@ -37,18 +43,13 @@ export class IntegrationService {
   private appendFileUrls(file: any): any {
     return {
       ...file,
-      // Preview via public integration endpoint (no auth required — UUID is unguessable)
-      preview_url: `${this.repoUrl}/api/integration/preview/${file.id}`,
-      download_url: `${this.repoUrl}/api/integration/download/${file.id}`,
+      preview_url: `${this.selfUrl}/integration/preview/${file.id}`,
+      download_url: `${this.selfUrl}/integration/download/${file.id}`,
     };
   }
 
   /**
-   * Ambil file MILIK SENDIRI dari repository.
-   * Alur hierarkis:
-   *   → Folder parent: nama = label jenis (misal "Indikator Kinerja Utama")
-   *   → Sub-folder: nama = "kode nama" (misal "1.1.1 Lulusan Tepat Waktu")
-   *   → Filter: hanya file milik email ini
+   * Ambil file MILIK SENDIRI dari repository untuk indikator tertentu.
    */
   async getFilesForIndikator(indikatorId: number, email: string): Promise<{
     indikatorKode: string;
@@ -75,8 +76,6 @@ export class IntegrationService {
 
   /**
    * Ambil SEMUA file dalam folder indikator tanpa filter pemilik (untuk pimpinan/admin).
-   * Menggunakan endpoint khusus di repository yang dilindungi shared secret —
-   * permission repository tetap berlaku untuk semua akses user biasa.
    */
   async getAllFilesForIndikator(indikatorId: number, _email: string): Promise<{
     indikatorKode: string;
@@ -97,7 +96,6 @@ export class IntegrationService {
       { 'x-integration-secret': secret },
     );
 
-    // Ambil folder_id dari file pertama untuk link ke repository frontend
     const repoFeUrl = this.configService.get<string>('REPOSITORY_FE_URL') || 'http://localhost:3000';
     const firstFolderId = files.length > 0 ? files[0].folder_id : null;
     const folderLink = firstFolderId ? `${repoFeUrl}/dashboard?folderId=${firstFolderId}` : null;
@@ -115,21 +113,29 @@ export class IntegrationService {
   }
 
   /**
-   * Ambil semua folder yang di-share ke user (bukan miliknya sendiri).
-   * Dipakai untuk browsing umum.
+   * Ambil semua folder yang dapat diakses oleh email tersebut.
    */
-  async getSharedFolders(email: string): Promise<any[]> {
-    const folders = await this.get<any[]>(
-      `/api/integration/folders?email=${encodeURIComponent(email)}`,
+  async getFolders(email: string): Promise<any[]> {
+    if (!email) return [];
+    return this.get<any[]>(`/api/integration/folders?email=${encodeURIComponent(email)}`);
+  }
+
+  /**
+   * Ambil file dari sub-folder langsung (level-2) di bawah parentFolderId.
+   */
+  async getFilesInChildren(parentFolderId: string, email: string): Promise<any[]> {
+    if (!parentFolderId || !email) return [];
+    const files = await this.get<any[]>(
+      `/api/integration/files/in-children?parentFolderId=${encodeURIComponent(parentFolderId)}&email=${encodeURIComponent(email)}`,
     );
-    // Tampilkan folder yang bukan milik sendiri; folder tanpa owner dianggap shared
-    return folders.filter((f) => !f.owner || f.owner.email !== email);
+    return files.map((f) => this.appendFileUrls(f));
   }
 
   /**
    * Ambil file dalam folder tertentu.
    */
   async getFilesInFolder(folderId: string, email: string): Promise<any[]> {
+    if (!folderId || !email) return [];
     const files = await this.get<any[]>(
       `/api/integration/files?folderId=${encodeURIComponent(folderId)}&email=${encodeURIComponent(email)}`,
     );
@@ -137,12 +143,41 @@ export class IntegrationService {
   }
 
   /**
-   * Cari file berdasarkan nama di semua folder yang bisa diakses user.
+   * Cari file — mode hierarchical (jenis+kode) atau legacy (name), sesuai repository-nest.
    */
-  async searchFiles(name: string, email: string): Promise<any[]> {
-    const files = await this.get<any[]>(
-      `/api/integration/files/search?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}`,
-    );
+  async searchFiles(name: string, email: string, jenis?: string, kode?: string, nama?: string): Promise<any[]> {
+    let path: string;
+    if (jenis && kode) {
+      path = `/api/integration/files/search?jenis=${encodeURIComponent(jenis)}&kode=${encodeURIComponent(kode)}&nama=${encodeURIComponent(nama || kode)}&email=${encodeURIComponent(email || '')}`;
+    } else if (name) {
+      path = `/api/integration/files/search?name=${encodeURIComponent(name)}&email=${encodeURIComponent(email || '')}`;
+    } else {
+      return [];
+    }
+    const files = await this.get<any[]>(path);
     return files.map((f) => this.appendFileUrls(f));
+  }
+
+  /**
+   * Proxy file dari repository-nest ke client (preview inline atau force-download).
+   */
+  async proxyFile(fileId: string, mode: 'inline' | 'download', res: Response): Promise<void> {
+    const endpoint = mode === 'inline' ? 'preview' : 'download';
+    try {
+      const upstream = await fetch(
+        `${this.repoUrl}/api/integration/${endpoint}/${encodeURIComponent(fileId)}`,
+      );
+      if (!upstream.ok || !upstream.body) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
+      for (const header of ['content-type', 'content-length', 'content-disposition']) {
+        const value = upstream.headers.get(header);
+        if (value) res.setHeader(header, value);
+      }
+      Readable.fromWeb(upstream.body as any).pipe(res);
+    } catch {
+      res.status(502).json({ error: 'Repository unavailable' });
+    }
   }
 }

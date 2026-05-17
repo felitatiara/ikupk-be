@@ -1,73 +1,100 @@
-import { Controller, Get, Query, Req, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Query, Req, Param, Res, UseGuards, ParseIntPipe } from '@nestjs/common';
+import type { Response } from 'express';
 import { IntegrationService } from './integration.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('integration')
-@UseGuards(JwtAuthGuard)
 export class IntegrationController {
   constructor(private readonly integrationService: IntegrationService) {}
 
   /**
    * GET /integration/realisasi-files?indikatorId=15
-   *
-   * Endpoint utama untuk submit realisasi.
-   * Ambil file dari repository di folder yang namanya = kode indikator.
-   * Email diambil otomatis dari JWT token.
-   *
-   * Contoh: indikator kode "1.1.1" → repository cari folder bernama "1.1.1"
-   * → return semua file di folder itu yang bisa diakses user ini.
+   * File milik sendiri untuk indikator tertentu — email dari JWT.
    */
+  @UseGuards(JwtAuthGuard)
   @Get('realisasi-files')
   getFilesForIndikator(
     @Req() req: any,
     @Query('indikatorId', ParseIntPipe) indikatorId: number,
   ) {
-    const email: string = req.user.email;
-    return this.integrationService.getFilesForIndikator(indikatorId, email);
+    return this.integrationService.getFilesForIndikator(indikatorId, req.user.email);
   }
 
   /**
    * GET /integration/all-realisasi-files?indikatorId=15
-   *
-   * Untuk pimpinan/admin: ambil SEMUA file di folder indikator dari semua dosen.
-   * Tiap file menyertakan ownerEmail dan ownerName agar bisa dikelompokkan per dosen.
+   * Semua file untuk indikator (atasan/admin) — email dari JWT.
    */
+  @UseGuards(JwtAuthGuard)
   @Get('all-realisasi-files')
   getAllFilesForIndikator(
     @Req() req: any,
     @Query('indikatorId', ParseIntPipe) indikatorId: number,
   ) {
-    const email: string = req.user.email;
-    return this.integrationService.getAllFilesForIndikator(indikatorId, email);
+    return this.integrationService.getAllFilesForIndikator(indikatorId, req.user.email);
   }
 
   /**
-   * GET /integration/shared-folders
-   * Browsing umum: semua folder yang di-share ke user ini.
+   * GET /integration/folders?email=xxx
+   * Semua folder yang bisa diakses user — email dari query param (sesuai repository-nest).
    */
-  @Get('shared-folders')
-  getSharedFolders(@Req() req: any) {
-    const email: string = req.user.email;
-    return this.integrationService.getSharedFolders(email);
+  @Get('folders')
+  getFolders(@Query('email') email: string) {
+    return this.integrationService.getFolders(email);
   }
 
   /**
-   * GET /integration/files?folderId=xxx
-   * Ambil file dalam folder tertentu beserta preview_url dan download_url.
+   * GET /integration/files/in-children?parentFolderId=xxx&email=xxx
+   * File dari sub-folder langsung di bawah parentFolderId — sesuai repository-nest.
+   */
+  @Get('files/in-children')
+  getFilesInChildren(
+    @Query('parentFolderId') parentFolderId: string,
+    @Query('email') email: string,
+  ) {
+    return this.integrationService.getFilesInChildren(parentFolderId, email);
+  }
+
+  /**
+   * GET /integration/files/search?name=xxx&email=xxx
+   *                          atau ?jenis=xxx&kode=xxx&nama=xxx&email=xxx
+   * Cari file — sesuai repository-nest (hierarchical atau legacy).
+   */
+  @Get('files/search')
+  searchFiles(
+    @Query('name') name: string,
+    @Query('jenis') jenis: string,
+    @Query('kode') kode: string,
+    @Query('nama') nama: string,
+    @Query('email') email: string,
+  ) {
+    return this.integrationService.searchFiles(name, email, jenis, kode, nama);
+  }
+
+  /**
+   * GET /integration/files?folderId=xxx&email=xxx
+   * File dalam folder tertentu — sesuai repository-nest.
    */
   @Get('files')
-  getFiles(@Req() req: any, @Query('folderId') folderId: string) {
-    const email: string = req.user.email;
+  getFiles(
+    @Query('folderId') folderId: string,
+    @Query('email') email: string,
+  ) {
     return this.integrationService.getFilesInFolder(folderId, email);
   }
 
   /**
-   * GET /integration/files/search?name=xxx
-   * Cari file berdasarkan kata kunci nama folder.
+   * GET /integration/preview/:fileId — proxy preview file, tanpa auth (sesuai repository-nest).
    */
-  @Get('files/search')
-  searchFiles(@Req() req: any, @Query('name') name: string) {
-    const email: string = req.user.email;
-    return this.integrationService.searchFiles(name, email);
+  @Get('preview/:fileId')
+  previewFile(@Param('fileId') fileId: string, @Res() res: Response) {
+    return this.integrationService.proxyFile(fileId, 'inline', res);
+  }
+
+  /**
+   * GET /integration/download/:fileId — proxy download file, tanpa auth (sesuai repository-nest).
+   */
+  @Get('download/:fileId')
+  downloadFile(@Param('fileId') fileId: string, @Res() res: Response) {
+    return this.integrationService.proxyFile(fileId, 'download', res);
   }
 }

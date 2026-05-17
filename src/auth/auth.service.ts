@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../roles/user-role.entity';
+import { User } from '../users/user.entity';
 import { JwtPayload } from '../common/interfaces/jwt-payload.interfaces';
 
 @Injectable()
@@ -13,6 +14,8 @@ export class AuthService {
     private jwtService: JwtService,
     @InjectRepository(UserRole)
     private userRoleRepo: Repository<UserRole>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
   ) {}
 
   async validateUser(nip: string, password: string) {
@@ -64,6 +67,49 @@ export class AuthService {
         })),
       },
       isPKUAdmin,
+    };
+  }
+
+  async switchRole(userId: number, roleId: number) {
+    const userRoles = await this.userRoleRepo.find({
+      where: { userId },
+      relations: ['role'],
+    });
+
+    const targetUserRole = userRoles.find((ur) => ur.roleId === roleId);
+    if (!targetUserRole) {
+      throw new UnauthorizedException('Role tidak tersedia untuk akun ini');
+    }
+
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new UnauthorizedException('User tidak ditemukan');
+
+    const payload: JwtPayload = {
+      sub: user.id.toString(),
+      email: user.email,
+      role: targetUserRole.role?.name?.toLowerCase() ?? '',
+      role_id: targetUserRole.roleId.toString(),
+    };
+
+    return {
+      token: this.jwtService.sign(payload),
+      user: {
+        id: user.id,
+        nip: user.nip,
+        nama: user.nama,
+        email: user.email,
+        jenis: user.jenis,
+        role: targetUserRole.role?.name?.toLowerCase() ?? null,
+        roleId: targetUserRole.roleId,
+        unitNama: targetUserRole.role?.unitNama ?? null,
+        roles: userRoles.map((ur) => ({
+          id: ur.roleId,
+          name: ur.role?.name,
+          unitNama: ur.role?.unitNama,
+          level: ur.role?.level,
+          isPrimary: ur.isPrimary,
+        })),
+      },
     };
   }
 }
