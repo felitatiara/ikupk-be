@@ -386,16 +386,48 @@ export class IndikatorService {
     userId: number,
     roleId: number,
   ) {
+    // Tentukan level dari role aktif user saat ini
+    const currentUserRole = await this.userRoleRepo.findOne({
+      where: { roleId },
+      relations: ['role'],
+    });
+    const currentRoleLevel = currentUserRole?.role?.level ?? 4;
+
     const disposisis = await this.disposisiRepo.find({
       where: { toUserId: userId, tahun },
     });
 
+    // Bulk-load level primary role dari setiap pengirim (fromUserId)
+    const fromUserIds = [
+      ...new Set(
+        disposisis
+          .map((d) => d.fromUserId)
+          .filter((id): id is number => id !== null && id !== userId),
+      ),
+    ];
+    const fromUserLevelMap = new Map<number, number>();
+    if (fromUserIds.length > 0) {
+      const fromUserPrimaryRoles = await this.userRoleRepo.find({
+        where: { userId: In(fromUserIds), isPrimary: true },
+        relations: ['role'],
+      });
+      for (const ur of fromUserPrimaryRoles) {
+        fromUserLevelMap.set(ur.userId, ur.role?.level ?? 4);
+      }
+    }
+
     // Mulai dari jumlah yang diterima dari atasan sebagai default
     const disposisiByIndikator = new Map<number, number>();
 
-    const receivedFromOthers = disposisis.filter(
-      (d) => d.fromUserId !== userId,
-    );
+    // Filter disposisi berdasarkan konteks role aktif:
+    // - Level >= 4 (Dosen): hanya tampilkan disposisi dari Kaprodi (level 3)
+    // - Level < 4 (struktural): hanya tampilkan disposisi dari non-Kaprodi (level != 3)
+    const receivedFromOthers = disposisis.filter((d) => {
+      if (d.fromUserId === userId) return false;
+      const fromLevel =
+        d.fromUserId !== null ? (fromUserLevelMap.get(d.fromUserId) ?? 4) : 0;
+      return currentRoleLevel >= 4 ? fromLevel === 3 : fromLevel !== 3;
+    });
     for (const d of receivedFromOthers) {
       disposisiByIndikator.set(
         d.indikatorId,
