@@ -455,6 +455,205 @@ const iku10_1_1 = await ind({ jenis: 'IKU', kode: '10.1.1', nama: 'Jumlah usulan
   void iku7_1_1; void iku7_1_2; void iku7_1_3; void iku7_1_4;
   void iku8_1_1; void iku10_1_1;
 
+  // ─── PK ──────────────────────────────────────────────────────────────────
+  console.log('Seeding Indikator PK...');
+  const pkSS1 = await ind({ jenis: 'PK', kode: '1', nama: 'Meningkatnya tata kelola satuan kerja di lingkungan UPN Veteran Jakarta', level: 0, parentId: null });
+
+const pk1_1 = await ind({ jenis: 'PK', kode: '1.1', nama: 'Peningkatan Tata Kelola Akademik', level: 1, parentId: pkSS1.id });
+const pk1_2 = await ind({ jenis: 'PK', kode: '1.2', nama: 'Peningkatan Tata Kelola Non Akademik', level: 1, parentId: pkSS1.id });
+
+const pk1_1_1 = await ind({ jenis: 'PK', kode: '1.1.1', nama: 'Ketersediaan Rencana Strategis Bisnis (RSB)', level: 2, parentId: pk1_1.id });
+const pk1_1_2 = await ind({ jenis: 'PK', kode: '1.1.2', nama: 'Pemutakhiran Pedoman Akademik TA. 2026/2027', level: 2, parentId: pk1_1.id });
+const pk1_1_3 = await ind({ jenis: 'PK', kode: '1.1.3', nama: 'Strategi pencapaian PK dan risk register 2026', level: 2, parentId: pk1_1.id });
+const pk1_1_4 = await ind({ jenis: 'PK', kode: '1.1.4', nama: 'Kalender Kegiatan Operasional Fakultas (KKOF) tahun 2026 tercetak dan terdistribusi pada tiap sub unit kerja Fakultas', level: 2, parentId: pk1_1.id });
+const pk1_1_5 = await ind({ jenis: 'PK', kode: '1.1.5', nama: 'Pemberitaan kegiatan melalui web Fakultas', level: 2, parentId: pk1_1.id });
+const pk1_1_6 = await ind({ jenis: 'PK', kode: '1.1.6', nama: 'Pelaporan PDDIKTI', level: 2, parentId: pk1_1.id });
+const pk1_1_7 = await ind({ jenis: 'PK', kode: '1.1.7', nama: 'Laporan Pemutakhiran Mahasiswa Tidak Aktif sesuai Angkatan', level: 2, parentId: pk1_1.id });
+const pk1_1_8 = await ind({ jenis: 'PK', kode: '1.1.8', nama: 'Pelaporan Akademik', level: 2, parentId: pk1_1.id });
+const pk1_1_9 = await ind({ jenis: 'PK', kode: '1.1.9', nama: 'Laporan Rapat Tinjauan Manajemen (RTM)', level: 2, parentId: pk1_1.id });
+const pk1_1_10 = await ind({ jenis: 'PK', kode: '1.1.10', nama: 'SKP Tendik dan Dosen', level: 2, parentId: pk1_1.id });
+const pk1_1_11 = await ind({ jenis: 'PK', kode: '1.1.11', nama: 'Penyusunan LKPS dan LED sesuai Format BAN-PT/LAM', level: 2, parentId: pk1_1.id });
+const pk1_1_12 = await ind({ jenis: 'PK', kode: '1.1.12', nama: 'Pelaksanaan Audit Mutu Internal (AMI) di tingkat program studi', level: 2, parentId: pk1_1.id });
+const pk1_1_13 = await ind({ jenis: 'PK', kode: '1.1.13', nama: 'Tingkat Penyelesaian Temuan Audit Mutu Internal (AMI) Tahun Sebelumnya', level: 2, parentId: pk1_1.id });
+const pk1_1_14 = await ind({ jenis: 'PK', kode: '1.1.14', nama: 'Program Studi Memenuhi dan Melampaui Standar AMI', level: 2, parentId: pk1_1.id });
+const pk1_1_15 = await ind({ jenis: 'PK', kode: '1.1.15', nama: 'Pelaksanaan Monev Persiapan Pembelajaran', level: 2, parentId: pk1_1.id });
+const pk1_1_16 = await ind({ jenis: 'PK', kode: '1.1.16', nama: 'Pelaksanaan Monev Proses Pembelajaran', level: 2, parentId: pk1_1.id });
+const pk1_1_17 = await ind({ jenis: 'PK', kode: '1.1.17', nama: 'Pelaksanaan Monev Laboratorium', level: 2, parentId: pk1_1.id });
+const pk1_1_18 = await ind({ jenis: 'PK', kode: '1.1.18', nama: 'Pelaksanaan Monev Penelitian dan PkM', level: 2, parentId: pk1_1.id });
+const pk1_1_19 = await ind({ jenis: 'PK', kode: '1.1.19', nama: 'Laporan Risk Register TA. 2025/2026', level: 2, parentId: pk1_1.id });
+const pk1_1_20 = await ind({ jenis: 'PK', kode: '1.1.20', nama: 'Reakreditasi Program Studi', level: 2, parentId: pk1_1.id });
+const pk1_1_21 = await ind({ jenis: 'PK', kode: '1.1.21', nama: 'Ketersediaan dokumen laporan evaluasi dan tindak lanjut hasil pelaksanaan survey kepuasan Indeks Kepuasan Standar Layanan Minimal (SPM) dalam 8 aspek', level: 2, parentId: pk1_1.id });
+const pk1_1_22 = await ind({ jenis: 'PK', kode: '1.1.22', nama: 'Publikasi hasil evaluasi survey kepuasan Indeks Kepuasan Standar Layanan Minimal (SPM) dalam 8 aspek', level: 2, parentId: pk1_1.id });
+const pk1_1_23 = await ind({ jenis: 'PK', kode: '1.1.23', nama: 'Inovasi layanan pendidikan', level: 2, parentId: pk1_1.id });
+const pk1_1_24 = await ind({ jenis: 'PK', kode: '1.1.24', nama: 'Pemutakhiran Data SINTA Dosen', level: 2, parentId: pk1_1.id });
+
+await ind({ jenis: 'PK', kode: '1.1.1.1', nama: 'Penyusunan revisi RSB Fakultas', level: 3, parentId: pk1_1_1.id });
+await ind({ jenis: 'PK', kode: '1.1.1.2', nama: 'Program kerja dan Kalender Kegiatan Operasional Prodi (KKOP) 2026', level: 3, parentId: pk1_1_1.id });
+
+await ind({ jenis: 'PK', kode: '1.1.2.1', nama: 'Pemutakhiran Pedoman Akademik TA. 2026/2027', level: 3, parentId: pk1_1_2.id });
+await ind({ jenis: 'PK', kode: '1.1.3.1', nama: 'Strategi pencapaian PK dan risk register 2026', level: 3, parentId: pk1_1_3.id });
+await ind({ jenis: 'PK', kode: '1.1.4.1', nama: 'Kalender Kegiatan Operasional Fakultas (KKOF) tahun 2026 tercetak dan terdistribusi pada tiap sub unit kerja Fakultas', level: 3, parentId: pk1_1_4.id });
+await ind({ jenis: 'PK', kode: '1.1.5.1', nama: 'Pemberitaan kegiatan melalui web Fakultas', level: 3, parentId: pk1_1_5.id });
+await ind({ jenis: 'PK', kode: '1.1.6.1', nama: 'Semester Genap TA 2025/2026', level: 3, parentId: pk1_1_6.id });
+await ind({ jenis: 'PK', kode: '1.1.6.2', nama: 'Semester Ganjil TA. 2026/2027', level: 3, parentId: pk1_1_6.id });
+await ind({ jenis: 'PK', kode: '1.1.7.1', nama: 'Laporan Pemutakhiran Mahasiswa Tidak Aktif sesuai Angkatan', level: 3, parentId: pk1_1_7.id });
+await ind({ jenis: 'PK', kode: '1.1.8.1', nama: 'Semester Genap TA 2025/2026', level: 3, parentId: pk1_1_8.id });
+await ind({ jenis: 'PK', kode: '1.1.8.2', nama: 'Semester Ganjil TA. 2026/2027', level: 3, parentId: pk1_1_8.id });
+await ind({ jenis: 'PK', kode: '1.1.9.1', nama: 'Laporan Rapat Tinjauan Manajemen (RTM)', level: 3, parentId: pk1_1_9.id });
+await ind({ jenis: 'PK', kode: '1.1.10.1', nama: 'Rencana SKP tendik dan dosen Tahun 2026', level: 3, parentId: pk1_1_10.id });
+await ind({ jenis: 'PK', kode: '1.1.10.2', nama: 'Penilaian SKP tendik dan dosen Tahun 2025', level: 3, parentId: pk1_1_10.id });
+
+await ind({ jenis: 'PK', kode: '1.1.11.1', nama: 'Penyusunan LKPS dan LED sesuai Format BAN-PT/LAM', level: 3, parentId: pk1_1_11.id });
+await ind({ jenis: 'PK', kode: '1.1.12.1', nama: 'Pelaksanaan Audit Mutu Internal (AMI) di tingkat program studi', level: 3, parentId: pk1_1_12.id });
+await ind({ jenis: 'PK', kode: '1.1.13.1', nama: 'Tingkat Penyelesaian Temuan Audit Mutu Internal (AMI) Tahun Sebelumnya', level: 3, parentId: pk1_1_13.id });
+await ind({ jenis: 'PK', kode: '1.1.14.1', nama: 'Program Studi Memenuhi dan Melampaui Standar AMI', level: 3, parentId: pk1_1_14.id });
+await ind({ jenis: 'PK', kode: '1.1.15.1', nama: 'Pelaksanaan Monev Persiapan Pembelajaran', level: 3, parentId: pk1_1_15.id });
+await ind({ jenis: 'PK', kode: '1.1.16.1', nama: 'Pelaksanaan Monev Proses Pembelajaran', level: 3, parentId: pk1_1_16.id });
+await ind({ jenis: 'PK', kode: '1.1.17.1', nama: 'Pelaksanaan Monev Laboratorium', level: 3, parentId: pk1_1_17.id });
+await ind({ jenis: 'PK', kode: '1.1.18.1', nama: 'Pelaksanaan Monev Penelitian dan PkM', level: 3, parentId: pk1_1_18.id });
+await ind({ jenis: 'PK', kode: '1.1.19.1', nama: 'Laporan Risk Register TA. 2025/2026', level: 3, parentId: pk1_1_19.id });
+await ind({ jenis: 'PK', kode: '1.1.20.1', nama: 'Reakreditasi Program Studi', level: 3, parentId: pk1_1_20.id });
+await ind({ jenis: 'PK', kode: '1.1.21.1', nama: 'Ketersediaan dokumen laporan evaluasi dan tindak lanjut hasil pelaksanaan survey kepuasan Indeks Kepuasan Standar Layanan Minimal (SPM) dalam 8 aspek', level: 3, parentId: pk1_1_21.id });
+await ind({ jenis: 'PK', kode: '1.1.22.1', nama: 'Publikasi hasil evaluasi survey kepuasan Indeks Kepuasan Standar Layanan Minimal (SPM) dalam 8 aspek', level: 3, parentId: pk1_1_22.id });
+await ind({ jenis: 'PK', kode: '1.1.23.1', nama: 'Inovasi layanan pendidikan', level: 3, parentId: pk1_1_23.id });
+await ind({ jenis: 'PK', kode: '1.1.24.1', nama: 'Pemutakhiran Data SINTA Dosen', level: 3, parentId: pk1_1_24.id });
+
+const pk1_2_1 = await ind({ jenis: 'PK', kode: '1.2.1', nama: 'Persentase Penurunan Nilai Piutang UKT dan/atau SPI', level: 2, parentId: pk1_2.id });
+const pk1_2_2 = await ind({ jenis: 'PK', kode: '1.2.2', nama: 'Persentase Pendapatan dari optimalisasi aset', level: 2, parentId: pk1_2.id });
+const pk1_2_3 = await ind({ jenis: 'PK', kode: '1.2.3', nama: 'Persentase kesesuaian LPJ dengan RPD Internal', level: 2, parentId: pk1_2.id });
+const pk1_2_4 = await ind({ jenis: 'PK', kode: '1.2.4', nama: 'Jumlah revisi POK', level: 2, parentId: pk1_2.id });
+const pk1_2_5 = await ind({ jenis: 'PK', kode: '1.2.5', nama: 'Laporan Kinerja Sub Satker Tahun 2026', level: 2, parentId: pk1_2.id });
+const pk1_2_6 = await ind({ jenis: 'PK', kode: '1.2.6', nama: 'Jumlah surveyor pada pemeringkatan Internasional QS', level: 2, parentId: pk1_2.id });
+
+await ind({ jenis: 'PK', kode: '1.2.1.1', nama: 'Persentase Penurunan Nilai Piutang UKT dan/atau SPI', level: 3, parentId: pk1_2_1.id });
+await ind({ jenis: 'PK', kode: '1.2.2.1', nama: 'Persentase Pendapatan dari optimalisasi aset', level: 3, parentId: pk1_2_2.id });
+await ind({ jenis: 'PK', kode: '1.2.3.1', nama: 'Persentase kesesuaian LPJ dengan RPD Internal', level: 3, parentId: pk1_2_3.id });
+await ind({ jenis: 'PK', kode: '1.2.4.1', nama: 'Jumlah revisi POK', level: 3, parentId: pk1_2_4.id });
+await ind({ jenis: 'PK', kode: '1.2.5.1', nama: 'Laporan Kinerja Sub Satker Tahun 2026', level: 3, parentId: pk1_2_5.id });
+
+await ind({ jenis: 'PK', kode: '1.2.6.1', nama: 'Pemenuhan surveyor pemeringkatan QS akademik dalam negeri', level: 3, parentId: pk1_2_6.id });
+await ind({ jenis: 'PK', kode: '1.2.6.2', nama: 'Pemenuhan surveyor pemeringkatan QS akademik luar negeri', level: 3, parentId: pk1_2_6.id });
+await ind({ jenis: 'PK', kode: '1.2.6.3', nama: 'Pemenuhan surveyor pemeringkatan QS employer dalam negeri dan luar negeri', level: 3, parentId: pk1_2_6.id });
+
+const pkSS2 = await ind({ jenis: 'PK', kode: '2', nama: 'Meningkatnya kualitas lulusan pendidikan tinggi', level: 0, parentId: null });
+
+const pk2_1 = await ind({ jenis: 'PK', kode: '2.1', nama: 'Pengelolaan bimbingan konseling', level: 1, parentId: pkSS2.id });
+
+const pk2_1_1 = await ind({ jenis: 'PK', kode: '2.1.1', nama: 'Pengelolaan bimbingan konseling', level: 2, parentId: pk2_1.id });
+
+await ind({ jenis: 'PK', kode: '2.1.1.1', nama: 'Pengelolaan bimbingan konseling', level: 3, parentId: pk2_1_1.id });
+
+const pkSS3 = await ind({ jenis: 'PK', kode: '3', nama: 'Meningkatkan kualitas kurikulum dan pembelajaran', level: 0, parentId: null });
+
+const pk3_1 = await ind({ jenis: 'PK', kode: '3.1', nama: 'Peningkatan Kualitas Kurikulum dan Pembelajaran', level: 1, parentId: pkSS3.id });
+const pk3_2 = await ind({ jenis: 'PK', kode: '3.2', nama: 'Peningkatan Kualitas Mahasiswa', level: 1, parentId: pkSS3.id });
+const pk3_3 = await ind({ jenis: 'PK', kode: '3.3', nama: 'Peningkatan Kualitas Kerjasama Dalam Negeri di Bidang Akademik', level: 1, parentId: pkSS3.id });
+const pk3_4 = await ind({ jenis: 'PK', kode: '3.4', nama: 'Peningkatan Kualitas Kerjasama Luar Negeri di Bidang Akademik', level: 1, parentId: pkSS3.id });
+
+const pk3_1_1 = await ind({ jenis: 'PK', kode: '3.1.1', nama: 'Persentase kegiatan/judul penelitian yang terintegrasi dengan mata kuliah', level: 2, parentId: pk3_1.id });
+const pk3_1_2 = await ind({ jenis: 'PK', kode: '3.1.2', nama: 'Persentase kegiatan/judul pengabdian kepada masyarakat yang terintegrasi dengan mata kuliah', level: 2, parentId: pk3_1.id });
+const pk3_1_3 = await ind({ jenis: 'PK', kode: '3.1.3', nama: 'Suasana akademik selain perkuliahan', level: 2, parentId: pk3_1.id });
+
+await ind({ jenis: 'PK', kode: '3.1.1.1', nama: 'Persentase kegiatan/judul penelitian yang terintegrasi dengan mata kuliah', level: 3, parentId: pk3_1_1.id });
+await ind({ jenis: 'PK', kode: '3.1.2.1', nama: 'Persentase kegiatan/judul pengabdian kepada masyarakat yang terintegrasi dengan mata kuliah', level: 3, parentId: pk3_1_2.id });
+
+await ind({ jenis: 'PK', kode: '3.1.3.1', nama: 'Kuliah umum dengan pembicara/narasumber academic leader/tokoh/pimpinan nasional', level: 3, parentId: pk3_1_3.id });
+await ind({ jenis: 'PK', kode: '3.1.3.2', nama: 'Bedah buku berstatus best seller nasional/internasional/buku hasil riset berskala nasional/internasional atau buku yang ditulis oleh dosen di Fakultas terkait yang terbit secara nasional/internasional', level: 3, parentId: pk3_1_3.id });
+await ind({ jenis: 'PK', kode: '3.1.3.3', nama: 'Diskusi ilmiah tingkat jurusan/pelatihan metodologi atau bidang akademik lainnya', level: 3, parentId: pk3_1_3.id });
+
+const pk3_2_1 = await ind({ jenis: 'PK', kode: '3.2.1', nama: 'Persentase mahasiswa memiliki sertifikat kompetensi nasional', level: 2, parentId: pk3_2.id });
+const pk3_2_2 = await ind({ jenis: 'PK', kode: '3.2.2', nama: 'Persentase mahasiswa memiliki sertifikat kompetensi internasional', level: 2, parentId: pk3_2.id });
+const pk3_2_3 = await ind({ jenis: 'PK', kode: '3.2.3', nama: 'Persentase mahasiswa yang dilibatkan dalam penelitian dosen', level: 2, parentId: pk3_2.id });
+const pk3_2_4 = await ind({ jenis: 'PK', kode: '3.2.4', nama: 'Persentase mahasiswa yang dilibatkan dalam pengabdian kepada masyarakat dosen', level: 2, parentId: pk3_2.id });
+
+await ind({ jenis: 'PK', kode: '3.2.1.1', nama: 'Persentase mahasiswa memiliki sertifikat kompetensi nasional', level: 3, parentId: pk3_2_1.id });
+await ind({ jenis: 'PK', kode: '3.2.2.1', nama: 'Persentase mahasiswa memiliki sertifikat kompetensi internasional', level: 3, parentId: pk3_2_2.id });
+await ind({ jenis: 'PK', kode: '3.2.3.1', nama: 'Persentase mahasiswa yang dilibatkan dalam penelitian dosen', level: 3, parentId: pk3_2_3.id });
+await ind({ jenis: 'PK', kode: '3.2.4.1', nama: 'Persentase mahasiswa yang dilibatkan dalam pengabdian kepada masyarakat dosen', level: 3, parentId: pk3_2_4.id });
+
+const pk3_3_1 = await ind({ jenis: 'PK', kode: '3.3.1', nama: 'Jumlah dokumen kerjasama baru (MoA) dengan perguruan tinggi/industri/lembaga pemerintah/swasta', level: 2, parentId: pk3_3.id });
+const pk3_3_2 = await ind({ jenis: 'PK', kode: '3.3.2', nama: 'Jumlah kegiatan sebagai implementasi kerjasama (IA) dengan perguruan tinggi/industri/lembaga pemerintah/swasta', level: 2, parentId: pk3_3.id });
+const pk3_3_3 = await ind({ jenis: 'PK', kode: '3.3.3', nama: 'Jumlah dana yang diperoleh dari hasil kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta dalam negeri', level: 2, parentId: pk3_3.id });
+
+await ind({ jenis: 'PK', kode: '3.3.1.1', nama: 'Jumlah dokumen kerjasama baru (MoA) dengan perguruan tinggi/industri/lembaga pemerintah/swasta', level: 3, parentId: pk3_3_1.id });
+await ind({ jenis: 'PK', kode: '3.3.2.1', nama: 'Jumlah kegiatan sebagai implementasi kerjasama (IA) dengan perguruan tinggi/industri/lembaga pemerintah/swasta', level: 3, parentId: pk3_3_2.id });
+await ind({ jenis: 'PK', kode: '3.3.3.1', nama: 'Jumlah dana yang diperoleh dari hasil kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta dalam negeri', level: 3, parentId: pk3_3_3.id });
+
+const pk3_4_1 = await ind({ jenis: 'PK', kode: '3.4.1', nama: 'Jumlah kegiatan sebagai implementasi kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta di luar negeri', level: 2, parentId: pk3_4.id });
+const pk3_4_2 = await ind({ jenis: 'PK', kode: '3.4.2', nama: 'Jumlah dana yang diterima dari kegiatan sebagai implementasi kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta di luar negeri', level: 2, parentId: pk3_4.id });
+
+await ind({ jenis: 'PK', kode: '3.4.1.1', nama: 'Jumlah kegiatan sebagai implementasi kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta di luar negeri', level: 3, parentId: pk3_4_1.id });
+await ind({ jenis: 'PK', kode: '3.4.2.1', nama: 'Jumlah dana yang diterima dari kegiatan sebagai implementasi kerjasama dengan perguruan tinggi/industri/lembaga pemerintah/swasta di luar negeri', level: 3, parentId: pk3_4_2.id });
+
+const pkSS4 = await ind({ jenis: 'PK', kode: '4', nama: 'Meningkatnya kualitas dosen pendidikan tinggi', level: 0, parentId: null });
+
+const pk4_1 = await ind({ jenis: 'PK', kode: '4.1', nama: 'Peningkatan Kualitas Penelitian', level: 1, parentId: pkSS4.id });
+const pk4_2 = await ind({ jenis: 'PK', kode: '4.2', nama: 'Peningkatan Kualitas Pengabdian kepada Masyarakat', level: 1, parentId: pkSS4.id });
+const pk4_3 = await ind({ jenis: 'PK', kode: '4.3', nama: 'Peningkatan Kualitas Luaran Penelitian', level: 1, parentId: pkSS4.id });
+
+const pk4_1_1 = await ind({ jenis: 'PK', kode: '4.1.1', nama: 'Jumlah proposal penelitian dosen yang diajukan ke sumber pendanaan eksternal', level: 2, parentId: pk4_1.id });
+const pk4_1_2 = await ind({ jenis: 'PK', kode: '4.1.2', nama: 'Jumlah proposal penelitian dosen yang lolos pendanaan eksternal', level: 2, parentId: pk4_1.id });
+const pk4_1_3 = await ind({ jenis: 'PK', kode: '4.1.3', nama: 'Jumlah penelitian dosen sumber dana internal', level: 2, parentId: pk4_1.id });
+const pk4_1_4 = await ind({ jenis: 'PK', kode: '4.1.4', nama: 'Persentase penelitian sesuai roadmap', level: 2, parentId: pk4_1.id });
+
+await ind({ jenis: 'PK', kode: '4.1.1.1', nama: 'Jumlah proposal penelitian dosen yang diajukan ke sumber pendanaan eksternal', level: 3, parentId: pk4_1_1.id });
+await ind({ jenis: 'PK', kode: '4.1.2.1', nama: 'Jumlah proposal penelitian dosen yang lolos pendanaan eksternal', level: 3, parentId: pk4_1_2.id });
+await ind({ jenis: 'PK', kode: '4.1.3.1', nama: 'Jumlah penelitian dosen sumber dana internal', level: 3, parentId: pk4_1_3.id });
+await ind({ jenis: 'PK', kode: '4.1.4.1', nama: 'Persentase penelitian sesuai roadmap', level: 3, parentId: pk4_1_4.id });
+
+const pk4_2_1 = await ind({ jenis: 'PK', kode: '4.2.1', nama: 'Jumlah proposal pengabdian kepada masyarakat dosen yang diajukan ke sumber pendanaan eksternal', level: 2, parentId: pk4_2.id });
+const pk4_2_2 = await ind({ jenis: 'PK', kode: '4.2.2', nama: 'Jumlah proposal pengabdian kepada masyarakat dosen yang lolos pendanaan eksternal', level: 2, parentId: pk4_2.id });
+const pk4_2_3 = await ind({ jenis: 'PK', kode: '4.2.3', nama: 'Jumlah pengabdian kepada masyarakat sumber dana internal', level: 2, parentId: pk4_2.id });
+
+await ind({ jenis: 'PK', kode: '4.2.1.1', nama: 'Jumlah proposal pengabdian kepada masyarakat dosen yang diajukan ke sumber pendanaan eksternal', level: 3, parentId: pk4_2_1.id });
+await ind({ jenis: 'PK', kode: '4.2.2.1', nama: 'Jumlah proposal pengabdian kepada masyarakat dosen yang lolos pendanaan eksternal', level: 3, parentId: pk4_2_2.id });
+await ind({ jenis: 'PK', kode: '4.2.3.1', nama: 'Jumlah pengabdian kepada masyarakat sumber dana internal', level: 3, parentId: pk4_2_3.id });
+
+const pk4_3_1 = await ind({ jenis: 'PK', kode: '4.3.1', nama: 'Jumlah HKI/Paten/Hak Cipta', level: 2, parentId: pk4_3.id });
+const pk4_3_2 = await ind({ jenis: 'PK', kode: '4.3.2', nama: 'Jumlah publikasi jurnal nasional terakreditasi', level: 2, parentId: pk4_3.id });
+const pk4_3_3 = await ind({ jenis: 'PK', kode: '4.3.3', nama: 'Jumlah publikasi jurnal internasional bereputasi', level: 2, parentId: pk4_3.id });
+const pk4_3_4 = await ind({ jenis: 'PK', kode: '4.3.4', nama: 'Jumlah sitasi publikasi', level: 2, parentId: pk4_3.id });
+const pk4_3_5 = await ind({ jenis: 'PK', kode: '4.3.5', nama: 'Jumlah dosen sebagai keynote speaker/narasumber nasional/internasional', level: 2, parentId: pk4_3.id });
+const pk4_3_6 = await ind({ jenis: 'PK', kode: '4.3.6', nama: 'Jumlah dosen terlibat dalam manuskrip buku', level: 2, parentId: pk4_3.id });
+
+await ind({ jenis: 'PK', kode: '4.3.1.1', nama: 'Jumlah HKI/Paten/Hak Cipta', level: 3, parentId: pk4_3_1.id });
+await ind({ jenis: 'PK', kode: '4.3.2.1', nama: 'Jumlah publikasi jurnal nasional terakreditasi', level: 3, parentId: pk4_3_2.id });
+await ind({ jenis: 'PK', kode: '4.3.3.1', nama: 'Jumlah publikasi jurnal internasional bereputasi', level: 3, parentId: pk4_3_3.id });
+await ind({ jenis: 'PK', kode: '4.3.4.1', nama: 'Jumlah sitasi publikasi', level: 3, parentId: pk4_3_4.id });
+await ind({ jenis: 'PK', kode: '4.3.5.1', nama: 'Jumlah dosen sebagai keynote speaker/narasumber nasional/internasional', level: 3, parentId: pk4_3_5.id });
+
+await ind({ jenis: 'PK', kode: '4.3.6.1', nama: 'Buku referensi baru', level: 3, parentId: pk4_3_6.id });
+await ind({ jenis: 'PK', kode: '4.3.6.2', nama: 'Book chapter baru', level: 3, parentId: pk4_3_6.id });
+await ind({ jenis: 'PK', kode: '4.3.6.3', nama: 'Buku ajar baru', level: 3, parentId: pk4_3_6.id });
+
+const pkSS5 = await ind({ jenis: 'PK', kode: '5', nama: 'Meningkatnya kualitas kemahasiswaan pendidikan tinggi', level: 0, parentId: null });
+
+const pk5_1 = await ind({ jenis: 'PK', kode: '5.1', nama: 'Peningkatan Prestasi Mahasiswa', level: 1, parentId: pkSS5.id });
+const pk5_2 = await ind({ jenis: 'PK', kode: '5.2', nama: 'Peningkatan Kualitas Organisasi Kemahasiswaan', level: 1, parentId: pkSS5.id });
+const pk5_3 = await ind({ jenis: 'PK', kode: '5.3', nama: 'Peningkatan Kualitas Alumni dan Tracer Study', level: 1, parentId: pkSS5.id });
+
+const pk5_1_1 = await ind({ jenis: 'PK', kode: '5.1.1', nama: 'Jumlah prestasi mahasiswa tingkat nasional', level: 2, parentId: pk5_1.id });
+const pk5_1_2 = await ind({ jenis: 'PK', kode: '5.1.2', nama: 'Jumlah prestasi mahasiswa tingkat internasional', level: 2, parentId: pk5_1.id });
+const pk5_1_3 = await ind({ jenis: 'PK', kode: '5.1.3', nama: 'Jumlah mahasiswa mengikuti kompetisi/lomba', level: 2, parentId: pk5_1.id });
+const pk5_1_4 = await ind({ jenis: 'PK', kode: '5.1.4', nama: 'Jumlah mahasiswa penerima program MBKM/pertukaran mahasiswa', level: 2, parentId: pk5_1.id });
+
+await ind({ jenis: 'PK', kode: '5.1.1.1', nama: 'Jumlah prestasi mahasiswa tingkat nasional', level: 3, parentId: pk5_1_1.id });
+await ind({ jenis: 'PK', kode: '5.1.2.1', nama: 'Jumlah prestasi mahasiswa tingkat internasional', level: 3, parentId: pk5_1_2.id });
+await ind({ jenis: 'PK', kode: '5.1.3.1', nama: 'Jumlah mahasiswa mengikuti kompetisi/lomba', level: 3, parentId: pk5_1_3.id });
+await ind({ jenis: 'PK', kode: '5.1.4.1', nama: 'Jumlah mahasiswa penerima program MBKM/pertukaran mahasiswa', level: 3, parentId: pk5_1_4.id });
+
+const pk5_2_1 = await ind({ jenis: 'PK', kode: '5.2.1', nama: 'Jumlah kegiatan organisasi kemahasiswaan', level: 2, parentId: pk5_2.id });
+const pk5_2_2 = await ind({ jenis: 'PK', kode: '5.2.2', nama: 'Jumlah organisasi mahasiswa aktif', level: 2, parentId: pk5_2.id });
+
+await ind({ jenis: 'PK', kode: '5.2.1.1', nama: 'Jumlah kegiatan organisasi kemahasiswaan', level: 3, parentId: pk5_2_1.id });
+await ind({ jenis: 'PK', kode: '5.2.2.1', nama: 'Jumlah organisasi mahasiswa aktif', level: 3, parentId: pk5_2_2.id });
+
+const pk5_3_1 = await ind({ jenis: 'PK', kode: '5.3.1', nama: 'Persentase tracer study alumni', level: 2, parentId: pk5_3.id });
+const pk5_3_2 = await ind({ jenis: 'PK', kode: '5.3.2', nama: 'Persentase alumni bekerja sesuai bidang', level: 2, parentId: pk5_3.id });
+
+await ind({ jenis: 'PK', kode: '5.3.1.1', nama: 'Persentase tracer study alumni', level: 3, parentId: pk5_3_1.id });
+await ind({ jenis: 'PK', kode: '5.3.2.1', nama: 'Persentase alumni bekerja sesuai bidang', level: 3, parentId: pk5_3_2.id });
+
   console.log('Seeding completed successfully!');
   await AppDataSource.destroy();
 }

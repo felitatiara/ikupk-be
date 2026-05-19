@@ -23,7 +23,7 @@ export class IntegrationService {
     private readonly indikatorRepo: Repository<Indikator>,
   ) {
     this.repoUrl =
-      this.configService.get<string>('REPOSITORY_NEST_URL') ||
+      this.configService.get<string>('REPOSITORY_BE_URL') ||
       'http://localhost:3005';
     this.selfUrl =
       this.configService.get<string>('SELF_URL') ||

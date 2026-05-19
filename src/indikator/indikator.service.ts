@@ -21,6 +21,16 @@ function isPastYear(tahun: string): boolean {
   return Number(tahun) < new Date().getFullYear();
 }
 
+function naturalSortKode(a: { kode: string }, b: { kode: string }): number {
+  const ap = a.kode.split('.').map(Number);
+  const bp = b.kode.split('.').map(Number);
+  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
+    const diff = (ap[i] ?? 0) - (bp[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 @Injectable()
 export class IndikatorService {
   constructor(
@@ -45,7 +55,8 @@ export class IndikatorService {
   async findAll(tahun?: string): Promise<Indikator[]> {
     const where: any = {};
     if (tahun) where.tahun = tahun;
-    return this.indikatorRepository.find({ where, order: { kode: 'ASC' } });
+    const rows = await this.indikatorRepository.find({ where });
+    return rows.sort(naturalSortKode);
   }
 
   async findOne(id: number): Promise<Indikator | null> {
@@ -81,7 +92,7 @@ export class IndikatorService {
 
   async saveCascadeChain(
     id: number,
-    chain: number[],
+    chain: (number | number[])[],
   ): Promise<{ success: boolean }> {
     await this.indikatorRepository.update(id, {
       cascadeChain: JSON.stringify(chain),
@@ -216,10 +227,8 @@ export class IndikatorService {
   // ── Grouped views ──────────────────────────────────────────────────────────
 
   async findGrouped(jenis: string, tahun: string, roleId?: number) {
-    const all = await this.indikatorRepository.find({
-      where: { jenis, tahun },
-      order: { kode: 'ASC' },
-    });
+    const all = (await this.indikatorRepository.find({ where: { jenis, tahun } }))
+      .sort(naturalSortKode);
 
     const roots = all.filter((i) => i.level === 0);
     const result: any[] = [];
@@ -420,13 +429,17 @@ export class IndikatorService {
     const disposisiByIndikator = new Map<number, number>();
 
     // Filter disposisi berdasarkan konteks role aktif:
-    // - Level >= 4 (Dosen): hanya tampilkan disposisi dari Kaprodi (level 3)
-    // - Level < 4 (struktural): hanya tampilkan disposisi dari non-Kaprodi (level != 3)
+    // - Dosen (level >= 4): hanya dari Kaprodi (level 3)
+    // - Wadek/Dekan (level <= 1): dari Admin (0) atau sesama pimpinan (1) — Dekan bisa disposisi ke Wadek
+    // - Kajur/Kaprodi (level 2-3): dari atasan langsung saja (fromLevel < currentRoleLevel)
+    //   Aturan ini mencegah Kajur → Bambang(Dosen) bocor ke dashboard Bambang sebagai Wadek.
     const receivedFromOthers = disposisis.filter((d) => {
       if (d.fromUserId === userId) return false;
       const fromLevel =
         d.fromUserId !== null ? (fromUserLevelMap.get(d.fromUserId) ?? 4) : 0;
-      return currentRoleLevel >= 4 ? fromLevel === 3 : fromLevel !== 3;
+      if (currentRoleLevel >= 4) return fromLevel === 3;
+      if (currentRoleLevel <= 1) return fromLevel <= 1;
+      return fromLevel < currentRoleLevel;
     });
     for (const d of receivedFromOthers) {
       disposisiByIndikator.set(
@@ -452,8 +465,12 @@ export class IndikatorService {
     for (const l0 of l0s) {
       if (!l0.cascadeChain) continue;
       try {
-        const chain = (JSON.parse(l0.cascadeChain) as unknown[]).map(Number);
-        if (chain[0] === Number(roleId)) cascadedL0Ids.add(l0.id);
+        const chain = JSON.parse(l0.cascadeChain) as unknown[];
+        const firstStep = chain[0];
+        const firstRoles = Array.isArray(firstStep)
+          ? (firstStep as unknown[]).map(Number)
+          : [Number(firstStep)];
+        if (firstRoles.includes(Number(roleId))) cascadedL0Ids.add(l0.id);
       } catch {
         /* skip malformed chain */
       }
@@ -811,10 +828,8 @@ export class IndikatorService {
     const bawahanIds = bawahanList.map((b) => b.id);
 
     // 2. Bangun baris dari leaf indikator
-    const all = await this.indikatorRepository.find({
-      where: { jenis, tahun },
-      order: { kode: 'ASC' },
-    });
+    const all = (await this.indikatorRepository.find({ where: { jenis, tahun } }))
+      .sort(naturalSortKode);
     const roots = all.filter((i) => i.level === 0);
     const isPK = jenis.toUpperCase() === 'PK';
 

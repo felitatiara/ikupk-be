@@ -55,6 +55,21 @@ export class IntegrationController {
   }
 
   /**
+   * GET /integration/my-files?jenis=IKU&nama=D3&kode=1.1.1
+   * File milik sendiri berdasarkan nama/kode indikator — email otomatis dari JWT.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('my-files')
+  getMyFiles(
+    @Req() req: any,
+    @Query('jenis') jenis: string,
+    @Query('nama') nama: string,
+    @Query('kode') kode: string,
+  ) {
+    return this.integrationService.searchFiles('', req.user.email, jenis, kode, nama);
+  }
+
+  /**
    * GET /integration/files/search?name=xxx&email=xxx
    *                          atau ?jenis=xxx&kode=xxx&nama=xxx&email=xxx
    * Cari file — sesuai repository-nest (hierarchical atau legacy).

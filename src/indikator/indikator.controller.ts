@@ -121,7 +121,7 @@ export class IndikatorController {
   @Post(':id/cascade-chain')
   saveCascadeChain(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { chain: number[] },
+    @Body() body: { chain: (number | number[])[] },
   ) {
     return this.indikatorService.saveCascadeChain(id, body.chain);
   }
