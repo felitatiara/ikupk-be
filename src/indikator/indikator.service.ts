@@ -395,7 +395,7 @@ export class IndikatorService {
     userId: number,
     roleId: number,
   ) {
-    // Tentukan level dari role aktif user saat ini
+    // Level role aktif user saat ini
     const currentUserRole = await this.userRoleRepo.findOne({
       where: { roleId },
       relations: ['role'],
@@ -404,9 +404,10 @@ export class IndikatorService {
 
     const disposisis = await this.disposisiRepo.find({
       where: { toUserId: userId, tahun },
+      relations: ['fromUser'],
     });
 
-    // Bulk-load level primary role dari setiap pengirim (fromUserId)
+    // Bulk-load level primary role dari setiap pengirim
     const fromUserIds = [
       ...new Set(
         disposisis
@@ -421,24 +422,20 @@ export class IndikatorService {
         relations: ['role'],
       });
       for (const ur of fromUserPrimaryRoles) {
-        fromUserLevelMap.set(ur.userId, ur.role?.level ?? 4);
+        fromUserLevelMap.set(ur.userId, ur.role?.level ?? 99);
       }
     }
 
-    // Mulai dari jumlah yang diterima dari atasan sebagai default
     const disposisiByIndikator = new Map<number, number>();
 
-    // Filter disposisi berdasarkan konteks role aktif:
-    // - Dosen (level >= 4): hanya dari Kaprodi (level 3)
-    // - Wadek/Dekan (level <= 1): dari Admin (0) atau sesama pimpinan (1) — Dekan bisa disposisi ke Wadek
-    // - Kajur/Kaprodi (level 2-3): dari atasan langsung saja (fromLevel < currentRoleLevel)
-    //   Aturan ini mencegah Kajur → Bambang(Dosen) bocor ke dashboard Bambang sebagai Wadek.
+    // Terima disposisi dari siapapun yang levelnya lebih tinggi di hierarki.
+    // Karena Dekan dan Wakil Dekan sama-sama level 1, Dekan → Wadek
+    // diterima via kondisi: fromLevel <= currentRoleLevel && fromLevel <= 1.
     const receivedFromOthers = disposisis.filter((d) => {
-      if (d.fromUserId === userId) return false;
-      const fromLevel =
-        d.fromUserId !== null ? (fromUserLevelMap.get(d.fromUserId) ?? 4) : 0;
-      if (currentRoleLevel >= 4) return fromLevel === 3;
-      if (currentRoleLevel <= 1) return fromLevel <= 1;
+      if (d.fromUserId === null || d.fromUserId === userId) return false;
+      const fromLevel = fromUserLevelMap.get(d.fromUserId) ?? 99;
+      // Sama level hanya diizinkan di level 0–1 (Dekan/Wadek satu rumpun)
+      if (fromLevel === currentRoleLevel) return currentRoleLevel <= 1;
       return fromLevel < currentRoleLevel;
     });
     for (const d of receivedFromOthers) {
@@ -520,6 +517,38 @@ export class IndikatorService {
 
     if (disposisiByIndikator.size === 0) return [];
 
+    // Build indikatorId → L0 group id map for fromUser resolution
+    type GcNode = { id: number };
+    type ChildNode = { id: number; children?: GcNode[] };
+    type SubNode = { id: number; children: ChildNode[] };
+    type GroupNode = { id: number; subIndikators: SubNode[] };
+
+    const indToL0Map = new Map<number, number>();
+    for (const group of fullGrouped as GroupNode[]) {
+      for (const sub of group.subIndikators) {
+        indToL0Map.set(sub.id, group.id);
+        for (const child of sub.children) {
+          indToL0Map.set(child.id, group.id);
+          for (const gc of child.children ?? []) {
+            indToL0Map.set(gc.id, group.id);
+          }
+        }
+      }
+    }
+
+    // Map L0 group id → fromUser name (only for non-cascaded, i.e. penerima 2+)
+    const fromUserNameByL0 = new Map<number, string>();
+    for (const d of receivedFromOthers) {
+      const l0Id = indToL0Map.get(d.indikatorId);
+      const fromUser = d['fromUser'] as { nama?: string } | null | undefined;
+      const fromUserNama = fromUser?.nama;
+      if (l0Id && fromUserNama && !cascadedL0Ids.has(l0Id)) {
+        if (!fromUserNameByL0.has(l0Id)) {
+          fromUserNameByL0.set(l0Id, fromUserNama);
+        }
+      }
+    }
+
     const assignedIndikatorIds = new Set(disposisiByIndikator.keys());
     const filtered: any[] = [];
 
@@ -568,7 +597,10 @@ export class IndikatorService {
         }
       }
       if (filteredSubs.length > 0) {
-        filtered.push({ ...group, subIndikators: filteredSubs });
+        const fromUserNama = cascadedL0Ids.has(group.id)
+          ? 'Dekan'
+          : (fromUserNameByL0.get(group.id) ?? null);
+        filtered.push({ ...group, subIndikators: filteredSubs, fromUserNama });
       }
     }
 

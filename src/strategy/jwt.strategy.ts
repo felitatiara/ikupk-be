@@ -38,6 +38,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
+    // Attach active switched role from JWT so controllers can use it
+    (user as any).activeRoleId = payload.role_id ? parseInt(payload.role_id, 10) : null;
+
     return user;
   }
 }

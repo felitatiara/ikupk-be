@@ -75,20 +75,19 @@ export class RealisasiService {
 
   /** Semua submission realisasi dari bawahan langsung seorang atasan, dikelompokkan per indikator */
   async getSubmissionsForAtasan(atasanId: number, tahun: string): Promise<any[]> {
-    // Cari bawahan dari UserRelation, fallback ke disposisi jika belum dikonfigurasi
-    const relations = await this.userRelationRepository.find({
-      where: { parentId: atasanId },
-      relations: ['user'],
+    // Prioritaskan disposisi (rantai tugas nyata) sebagai sumber bawahan
+    const disposisiRecords = await this.disposisiRepository.find({
+      where: { fromUserId: atasanId, tahun },
     });
-
-    let bawahanIds: number[] = relations.map((r) => r.userId);
+    let bawahanIds: number[] = [...new Set(disposisiRecords.map(d => d.toUserId).filter(Boolean))];
 
     if (bawahanIds.length === 0) {
-      // Fallback: siapapun yang menerima disposisi dari atasan ini untuk tahun ini
-      const disposisiRecords = await this.disposisiRepository.find({
-        where: { fromUserId: atasanId, tahun },
+      // Fallback: UserRelation (struktur org) jika belum ada disposisi
+      const relations = await this.userRelationRepository.find({
+        where: { parentId: atasanId },
+        relations: ['user'],
       });
-      bawahanIds = [...new Set(disposisiRecords.map(d => d.toUserId).filter(Boolean))];
+      bawahanIds = relations.map((r) => r.userId);
     }
 
     // Jangan tampilkan submission dari atasan sendiri (mencegah self-validasi)
@@ -107,12 +106,12 @@ export class RealisasiService {
       .addOrderBy('creator.nama', 'ASC')
       .getMany();
 
-    // Fetch disposisi targets: hanya yang DARI atasan ini ke masing-masing bawahan.
-    // Filter fromUserId = atasanId menghindari self-disposisi bawahan terpakai sebagai target.
+    // Fetch disposisi targets: ambil semua disposisi yang DITERIMA bawahan (tanpa filter pengirim),
+    // sehingga target yang diteruskan lewat rantai cascade tetap tampil.
     const allDosenIds = [...new Set(realisasiList.map(r => r.createdBy).filter(Boolean))];
     const disposisiList = allDosenIds.length > 0
       ? await this.disposisiRepository.find({
-          where: { fromUserId: atasanId, toUserId: In(allDosenIds), tahun },
+          where: { toUserId: In(allDosenIds), tahun },
         })
       : [];
     const disposisiMap = new Map<string, number>();
@@ -172,23 +171,24 @@ export class RealisasiService {
         }
       }
     } else {
-      const relations = await this.userRelationRepository.find({
-        where: { parentId: atasanId },
-        relations: ['user'],
+      // Prioritaskan disposisi (rantai tugas nyata)
+      const disposisiRecords = await this.disposisiRepository.find({
+        where: { fromUserId: atasanId, tahun },
+        relations: ['toUser'],
       });
-      for (const rel of relations) {
-        bawahanMap.set(rel.userId, rel.user);
+      for (const d of disposisiRecords) {
+        if (d.toUser && !bawahanMap.has(d.toUserId)) {
+          bawahanMap.set(d.toUserId, d.toUser);
+        }
       }
-      // Fallback: bawahan dari disposisi jika UserRelation belum dikonfigurasi
+      // Fallback: UserRelation (struktur org) jika belum ada disposisi
       if (bawahanMap.size === 0) {
-        const disposisiRecords = await this.disposisiRepository.find({
-          where: { fromUserId: atasanId, tahun },
-          relations: ['toUser'],
+        const relations = await this.userRelationRepository.find({
+          where: { parentId: atasanId },
+          relations: ['user'],
         });
-        for (const d of disposisiRecords) {
-          if (d.toUser && !bawahanMap.has(d.toUserId)) {
-            bawahanMap.set(d.toUserId, d.toUser);
-          }
+        for (const rel of relations) {
+          bawahanMap.set(rel.userId, rel.user);
         }
       }
       // Cegah self-entry

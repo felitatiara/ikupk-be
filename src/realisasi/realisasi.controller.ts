@@ -114,9 +114,10 @@ export class RealisasiController {
     },
   ) {
     const userId: number = req.user?.id;
+    const activeRoleId: number | null = req.user?.activeRoleId ?? null;
     const primaryUserRole =
       req.user?.userRoles?.find((ur: any) => ur.isPrimary) ?? req.user?.userRoles?.[0];
-    const roleId: number | null = primaryUserRole?.roleId ?? null;
+    const roleId: number | null = activeRoleId ?? primaryUserRole?.roleId ?? null;
     return this.realisasiService.submitDirect({
       indikatorId: body.indikatorId,
       roleId,
@@ -192,11 +193,12 @@ export class RealisasiController {
     },
   ) {
     const userId: number = req.user?.id;
+    const activeRoleId: number | null = req.user?.activeRoleId ?? null;
     // userRoles is loaded by JwtStrategy via eager relations; pick primary
     const primaryUserRole =
       req.user?.userRoles?.find((ur: any) => ur.isPrimary) ??
       req.user?.userRoles?.[0];
-    const roleId: number | null = primaryUserRole?.roleId ?? null;
+    const roleId: number | null = activeRoleId ?? primaryUserRole?.roleId ?? null;
     return this.realisasiService.submitFromFile({
       indikatorId: body.indikatorId,
       roleId,
