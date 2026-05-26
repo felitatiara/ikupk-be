@@ -78,7 +78,22 @@ export class RealisasiController {
     return this.realisasiService.getSkpBawahan(atasanId, tahun, forDekan === 'true');
   }
 
-  /** Approve atau reject semua realisasi bawahan untuk tahun tertentu */
+  /** WD2: semua user yang punya realisasi validated_atasan */
+  @Get('submissions-for-wd2')
+  getSubmissionsForWD2(@Query('tahun') tahun: string) {
+    return this.realisasiService.getSubmissionsForWD2(tahun);
+  }
+
+  /** WD2: validasi semua realisasi validated_atasan milik seorang user → validated_wd2 */
+  @Patch('skp-wd2/:userId/validate')
+  validateWD2(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body('tahun') tahun: string,
+  ) {
+    return this.realisasiService.validateWD2Batch(userId, tahun);
+  }
+
+  /** Approve atau reject semua realisasi validated_wd2 bawahan (Dekan) */
   @Patch('skp-bawahan/:userId/approve')
   approveBawahanSkp(
     @Param('userId', ParseIntPipe) userId: number,

@@ -12,6 +12,7 @@ import { TargetUnit } from '../target/target-unit.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
+import { RealisasiFile } from '../realisasi/realisasi-file.entity';
 import { UserRelation } from '../users/user_relation.entity';
 import { UserRole } from '../roles/user-role.entity';
 
@@ -46,6 +47,8 @@ export class IndikatorService {
     private disposisiRepo: Repository<Disposisi>,
     @InjectRepository(Realisasi)
     private realisasiRepo: Repository<Realisasi>,
+    @InjectRepository(RealisasiFile)
+    private realisasiFileRepo: Repository<RealisasiFile>,
     @InjectRepository(UserRelation)
     private userRelationRepo: Repository<UserRelation>,
     @InjectRepository(UserRole)
@@ -639,6 +642,22 @@ export class IndikatorService {
           );
         }
       }
+
+      // Also count files uploaded directly to realisasi_files (ikupk-type).
+      // This ensures the chart reflects uploaded files even before a formal
+      // realisasi record is submitted.
+      const uploadedFiles = await this.realisasiFileRepo.find({
+        where: { indikatorId: In(indikatorIds), createdBy: userId, tahun },
+      });
+      const fileCountMap = new Map<number, number>();
+      for (const f of uploadedFiles) {
+        if (f.indikatorId === null) continue;
+        fileCountMap.set(f.indikatorId, (fileCountMap.get(f.indikatorId) ?? 0) + 1);
+      }
+      for (const [id, count] of fileCountMap) {
+        // Use the larger of: formal realisasi submission vs raw file count
+        realisasiMap.set(id, Math.max(realisasiMap.get(id) ?? 0, count));
+      }
     }
 
     for (const group of filtered) {
@@ -647,9 +666,22 @@ export class IndikatorService {
         let subReal = realisasiMap.get(sub.id) ?? 0;
         let subValid: number | null = validRealisasiMap.get(sub.id) ?? null;
 
-        for (const child of sub.children ?? []) {
-          child.realisasiJumlah = realisasiMap.get(child.id) ?? 0;
-          child.validRealisasiJumlah = validRealisasiMap.get(child.id) ?? null;
+        for (const child of (sub.children ?? []) as {
+          id: number;
+          realisasiJumlah: number;
+          validRealisasiJumlah: number | null;
+          children?: {
+            id: number;
+            realisasiJumlah: number;
+            validRealisasiJumlah: number | null;
+          }[];
+        }[]) {
+          const childReal = realisasiMap.get(child.id) ?? 0;
+          const childValid = validRealisasiMap.get(child.id) ?? null;
+          child.realisasiJumlah = childReal;
+          child.validRealisasiJumlah = childValid;
+          subReal += childReal;
+          if (childValid !== null) subValid = (subValid ?? 0) + childValid;
           for (const gc of child.children ?? []) {
             const gcReal = realisasiMap.get(gc.id) ?? 0;
             const gcValid = validRealisasiMap.get(gc.id) ?? null;
@@ -811,6 +843,7 @@ export class IndikatorService {
     type BawahanItem = {
       id: number;
       nama: string;
+      email: string;
       roleName: string;
       roleLevel: number;
       unitNama: string | null;
@@ -830,6 +863,7 @@ export class IndikatorService {
           bawahanList.push({
             id: ur.user.id,
             nama: ur.user.nama,
+            email: (ur.user as unknown as { email?: string }).email ?? '',
             roleName: ur.role.name,
             roleLevel: ur.role.level,
             unitNama: ur.role.unitNama ?? null,
@@ -844,15 +878,23 @@ export class IndikatorService {
       });
       for (const rel of relations) {
         if (!rel.user) continue;
-        const pr =
-          rel.user.userRoles?.find((ur) => ur.isPrimary) ??
-          rel.user.userRoles?.[0];
+        const allRoles = rel.user.userRoles ?? [];
+        // In the context of being supervised by Kajur/Kaprodi, use the role with
+        // the highest level number (least authoritative = dosen context),
+        // so a multi-role user (e.g. Wakil Dekan + Dosen) shows as "Dosen".
+        const contextRole =
+          allRoles.length > 0
+            ? allRoles.reduce((best, ur) =>
+                (ur.role?.level ?? 0) > (best.role?.level ?? 0) ? ur : best
+              )
+            : (allRoles[0] ?? null);
         bawahanList.push({
           id: rel.user.id,
           nama: rel.user.nama,
-          roleName: pr?.role?.name ?? '',
-          roleLevel: pr?.role?.level ?? 4,
-          unitNama: pr?.role?.unitNama ?? null,
+          email: (rel.user as unknown as { email?: string }).email ?? '',
+          roleName: contextRole?.role?.name ?? '',
+          roleLevel: contextRole?.role?.level ?? 4,
+          unitNama: contextRole?.role?.unitNama ?? null,
         });
       }
     }
@@ -878,6 +920,7 @@ export class IndikatorService {
       nilaiTarget: number | null;
       satuan: string | null;
       disposisiByUser: Record<number, number>;
+      realisasiByUser: Record<number, number>;
     };
     const leafRows: LeafRow[] = [];
 
@@ -903,6 +946,7 @@ export class IndikatorService {
               nilaiTarget: uniT ? Number(uniT.persentase) : null,
               satuan: uniT?.satuan ?? null,
               disposisiByUser: {},
+              realisasiByUser: {},
             });
           }
         } else {
@@ -927,6 +971,7 @@ export class IndikatorService {
                 nilaiTarget: uniT ? Number(uniT.persentase) : null,
                 satuan: uniT?.satuan ?? null,
                 disposisiByUser: {},
+                realisasiByUser: {},
               });
             }
           }
@@ -944,6 +989,37 @@ export class IndikatorService {
         if (row)
           row.disposisiByUser[d.toUserId] =
             (row.disposisiByUser[d.toUserId] ?? 0) + Number(d.jumlahTarget);
+      }
+    }
+
+    // 4. Isi data realisasi (submitted, tanpa validasi) per bawahan
+    if (bawahanIds.length > 0 && leafRows.length > 0) {
+      const leafIds = leafRows.map((r) => r.leafId);
+      const realisasiList = await this.realisasiRepo.find({
+        where: { createdBy: In(bawahanIds), indikatorId: In(leafIds), tahun },
+      });
+      for (const r of realisasiList) {
+        const row = leafRows.find((lr) => lr.leafId === r.indikatorId);
+        if (row)
+          row.realisasiByUser[r.createdBy] =
+            (row.realisasiByUser[r.createdBy] ?? 0) + Number(r.realisasiAngka);
+      }
+      // Also count raw uploaded files (realisasi_files) and take the max
+      const filesList = await this.realisasiFileRepo.find({
+        where: { indikatorId: In(leafIds), createdBy: In(bawahanIds), tahun },
+      });
+      const fileCountMap = new Map<string, number>();
+      for (const f of filesList) {
+        if (f.indikatorId === null) continue;
+        const key = `${f.createdBy}:${f.indikatorId}`;
+        fileCountMap.set(key, (fileCountMap.get(key) ?? 0) + 1);
+      }
+      for (const row of leafRows) {
+        for (const uid of bawahanIds) {
+          const fc = fileCountMap.get(`${uid}:${row.leafId}`) ?? 0;
+          if (fc > (row.realisasiByUser[uid] ?? 0))
+            row.realisasiByUser[uid] = fc;
+        }
       }
     }
 
