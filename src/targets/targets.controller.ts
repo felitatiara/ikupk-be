@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, ParseIntPipe, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { TargetsService } from './targets.service';
 
 @Controller('targets')
@@ -91,11 +92,13 @@ export class TargetsController {
   }
 
   @Get('target-universitas')
-  getTargetUniversitas(
+  async getTargetUniversitas(
     @Query('indikatorId', ParseIntPipe) indikatorId: number,
     @Query('tahun') tahun: string,
+    @Res() res: Response,
   ) {
-    return this.targetsService.getTargetUniversitasByIndikator(indikatorId, tahun);
+    const result = await this.targetsService.getTargetUniversitasByIndikator(indikatorId, tahun);
+    res.json(result);
   }
 
   @Post('upsert-target-universitas')

@@ -106,9 +106,11 @@ export class IndikatorService {
   async update(
     id: number,
     data: Partial<Indikator>,
-  ): Promise<Indikator | null> {
+  ): Promise<Indikator> {
     await this.indikatorRepository.update(id, data);
-    return this.findOne(id);
+    const updated = await this.findOne(id);
+    if (!updated) throw new NotFoundException(`Indikator ID ${id} tidak ditemukan`);
+    return updated;
   }
 
   async remove(id: number): Promise<void> {

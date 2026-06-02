@@ -6,11 +6,13 @@ import { Disposisi } from '../disposisi/disposisi.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { UserRelation } from '../users/user_relation.entity';
 import { Indikator } from '../indikator/indikator.entity';
+import { UserRole } from '../roles/user-role.entity';
+import { Role } from '../roles/role.entity';
 import { RealisasiService } from './realisasi.service';
 import { RealisasiController } from './realisasi.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Realisasi, RealisasiFile, Disposisi, TargetUnit, UserRelation, Indikator])],
+  imports: [TypeOrmModule.forFeature([Realisasi, RealisasiFile, Disposisi, TargetUnit, UserRelation, Indikator, UserRole, Role])],
   providers: [RealisasiService],
   controllers: [RealisasiController],
   exports: [RealisasiService],
