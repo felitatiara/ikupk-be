@@ -28,6 +28,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { IntegrationModule } from './integration/integration.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { Notification } from './notifications/notification.entity';
+import { ValidasiBiroPKU } from './monitoring/validasi-biro-pku.entity';
 import jwtConfig from './config/jwt.config';
 
 @Module({
@@ -55,6 +56,7 @@ import jwtConfig from './config/jwt.config';
           Realisasi, RealisasiFile,
           BaselineData, Kriteria, Disposisi,
           Notification,
+          ValidasiBiroPKU,
         ],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',

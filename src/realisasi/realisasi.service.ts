@@ -9,6 +9,7 @@ import { Disposisi } from '../disposisi/disposisi.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { UserRelation } from '../users/user_relation.entity';
 import { Indikator } from '../indikator/indikator.entity';
+import { UserRole } from '../roles/user-role.entity';
 
 @Injectable()
 export class RealisasiService {
@@ -25,6 +26,8 @@ export class RealisasiService {
     private readonly userRelationRepository: Repository<UserRelation>,
     @InjectRepository(Indikator)
     private readonly indikatorRepository: Repository<Indikator>,
+    @InjectRepository(UserRole)
+    private readonly userRoleRepository: Repository<UserRole>,
   ) {}
 
   async findAll(): Promise<Realisasi[]> {
@@ -295,10 +298,47 @@ export class RealisasiService {
       ? 'rejected'
       : 'pending';
 
-    const relation = await this.userRelationRepository.findOne({
-      where: { userId },
-      relations: ['parent'],
+    // Cek apakah user ini adalah WD2
+    const myUserRole = await this.userRoleRepository.findOne({
+      where: { userId, isPrimary: true },
+      relations: ['role'],
     });
+    const myRoleName = (myUserRole?.role?.name ?? '').toLowerCase();
+    const isWD2 =
+      myRoleName.includes('wakil dekan 2') ||
+      myRoleName.includes('wakil dekan ii') ||
+      myRoleName.includes('wd2');
+
+    let penilai: { nama: string; nip: string | null } | null = null;
+
+    if (isWD2) {
+      // Penilai WD2 adalah Dekan
+      const dekanRow = await this.userRoleRepository
+        .createQueryBuilder('ur')
+        .innerJoinAndSelect('ur.user', 'u')
+        .innerJoinAndSelect('ur.role', 'r')
+        .where('ur.isPrimary = true')
+        .andWhere("LOWER(r.name) = 'dekan'")
+        .getOne();
+      penilai = dekanRow?.user
+        ? { nama: dekanRow.user.nama, nip: (dekanRow.user as any).nip ?? null }
+        : null;
+    } else {
+      // Penilai dosen/lainnya adalah WD2
+      const wd2Row = await this.userRoleRepository
+        .createQueryBuilder('ur')
+        .innerJoinAndSelect('ur.user', 'u')
+        .innerJoinAndSelect('ur.role', 'r')
+        .where('ur.isPrimary = true')
+        .andWhere(
+          "LOWER(r.name) LIKE :n1 OR LOWER(r.name) LIKE :n2 OR LOWER(r.name) LIKE :n3",
+          { n1: '%wakil dekan 2%', n2: '%wakil dekan ii%', n3: '%wd2%' },
+        )
+        .getOne();
+      penilai = wd2Row?.user
+        ? { nama: wd2Row.user.nama, nip: (wd2Row.user as any).nip ?? null }
+        : null;
+    }
 
     return {
       status,
@@ -311,9 +351,7 @@ export class RealisasiService {
         validFileCount: r.validFileCount,
         status: r.status,
       })),
-      atasan: relation?.parent
-        ? { nama: relation.parent.nama, nip: relation.parent.nip ?? null }
-        : null,
+      atasan: penilai,
     };
   }
 

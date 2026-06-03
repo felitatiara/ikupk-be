@@ -9,6 +9,7 @@ import { Indikator } from '../indikator/indikator.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { User } from '../users/user.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
+import { ValidasiBiroPKU } from './validasi-biro-pku.entity';
 
 @Injectable()
 export class MonitoringService {
@@ -29,6 +30,8 @@ export class MonitoringService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Disposisi)
     private readonly disposisiRepository: Repository<Disposisi>,
+    @InjectRepository(ValidasiBiroPKU)
+    private readonly validasiBiroPKURepository: Repository<ValidasiBiroPKU>,
   ) {}
 
   private async getBaseline(
@@ -410,5 +413,31 @@ export class MonitoringService {
     }
 
     return { roleId, tahun, data: chartData };
+  }
+
+  async getValidasiBiroPKU(tahun: string): Promise<ValidasiBiroPKU[]> {
+    return this.validasiBiroPKURepository.find({ where: { tahun } });
+  }
+
+  async upsertValidasiBiroPKU(data: {
+    indikatorId: number;
+    tahun: string;
+    jumlahValid: number | null;
+    keterangan?: string;
+    inputBy?: number;
+  }): Promise<ValidasiBiroPKU> {
+    let record = await this.validasiBiroPKURepository.findOne({
+      where: { indikatorId: data.indikatorId, tahun: data.tahun },
+    });
+    if (!record) {
+      record = this.validasiBiroPKURepository.create({
+        indikatorId: data.indikatorId,
+        tahun: data.tahun,
+      });
+    }
+    record.jumlahValid = data.jumlahValid ?? null;
+    record.keterangan = data.keterangan ?? null;
+    record.inputBy = data.inputBy ?? null;
+    return this.validasiBiroPKURepository.save(record);
   }
 }
