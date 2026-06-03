@@ -575,9 +575,14 @@ export class IndikatorService {
               }));
 
             if (isChildAssigned) {
+              const enrichedGrandchildren = (c.children ?? []).map((gc: any) => ({
+                ...gc,
+                disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+              }));
               return {
                 ...c,
                 disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+                children: enrichedGrandchildren,
               };
             } else if (filteredGrandchildren.length > 0) {
               return { ...c, children: filteredGrandchildren };
@@ -587,10 +592,14 @@ export class IndikatorService {
           .filter(Boolean);
 
         if (isSubAssigned) {
-          // Enrich all L2 children with disposisiJumlah from cascade map
+          // Enrich all L2 children and L3 grandchildren with disposisiJumlah from cascade map
           const enrichedChildren = (sub.children ?? []).map((c: any) => ({
             ...c,
             disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+            children: (c.children ?? []).map((gc: any) => ({
+              ...gc,
+              disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+            })),
           }));
           filteredSubs.push({
             ...sub,

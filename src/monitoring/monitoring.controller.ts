@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { MonitoringService } from './monitoring.service';
 
 @Controller('monitoring')
@@ -35,5 +35,17 @@ export class MonitoringController {
     @Query('tahun') tahun: string,
   ) {
     return this.monitoringService.getDisposisiDosen(fromUserId, tahun);
+  }
+
+  @Get('validasi-biro-pku')
+  async getValidasiBiroPKU(@Query('tahun') tahun: string) {
+    return this.monitoringService.getValidasiBiroPKU(tahun);
+  }
+
+  @Post('validasi-biro-pku')
+  async upsertValidasiBiroPKU(
+    @Body() body: { indikatorId: number; tahun: string; jumlahValid: number | null; keterangan?: string; inputBy?: number },
+  ) {
+    return this.monitoringService.upsertValidasiBiroPKU(body);
   }
 }
