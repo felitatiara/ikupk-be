@@ -185,6 +185,16 @@ export class RealisasiController {
     return this.realisasiService.getIkupkFiles(indikatorId, tahun, userId);
   }
 
+  /** Ambil daftar file ikupk milik user tertentu — untuk atasan saat validasi */
+  @Get('ikupk-files-by-user')
+  getIkupkFilesByUser(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.realisasiService.getIkupkFiles(indikatorId, tahun, userId);
+  }
+
   /** Hapus file ikupk milik user login */
   @UseGuards(JwtAuthGuard)
   @Delete('ikupk-files/:id')

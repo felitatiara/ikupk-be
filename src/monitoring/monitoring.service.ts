@@ -134,6 +134,14 @@ export class MonitoringService {
         );
       }
 
+      // Biro PKU validated value overrides raw submissions when available
+      const biroPKURecord = await this.validasiBiroPKURepository.findOne({
+        where: { indikatorId: l0.id, tahun },
+      });
+      const realisasiBiroPKU = biroPKURecord?.jumlahValid ?? null;
+      const effectiveRealisasi =
+        realisasiBiroPKU !== null ? realisasiBiroPKU : sumRealisasi;
+
       if (jenis === 'IKU') {
         // Target unit at L1
         for (const l1 of level1Children) {
@@ -167,35 +175,33 @@ export class MonitoringService {
 
       const persentaseRealisasi =
         baseline != null && baseline > 0
-          ? Math.round((sumRealisasi / baseline) * 100 * 10) / 10
+          ? Math.round((effectiveRealisasi / baseline) * 100 * 10) / 10
           : null;
 
       const tercapai =
         persentaseRealisasi != null
           ? persentaseRealisasi >= persentaseTarget
-          : sumRealisasi >= sumTargetFak && sumTargetFak > 0;
+          : effectiveRealisasi >= sumTargetFak && sumTargetFak > 0;
 
       const progress =
         targetAbsolut != null && targetAbsolut > 0
-          ? Math.min(100, Math.floor((sumRealisasi / targetAbsolut) * 100))
+          ? Math.min(100, Math.floor((effectiveRealisasi / targetAbsolut) * 100))
           : sumTargetFak > 0
-            ? Math.min(100, Math.floor((sumRealisasi / sumTargetFak) * 100))
+            ? Math.min(100, Math.floor((effectiveRealisasi / sumTargetFak) * 100))
             : 0;
 
       // Build per-L1 sub-indikator data (with L2 children)
       const subIndikators: any[] = [];
       for (const l1 of level1Children) {
         const l1DescendantIds = await this.getAllDescendantIds(l1.id);
-        let l1Realisasi = 0;
-        if (l1DescendantIds.length > 0) {
-          const l1RealisasiList = await this.realisasiRepository.find({
-            where: l1DescendantIds.map((id) => ({ indikatorId: id, tahun })),
-          });
-          l1Realisasi = l1RealisasiList.reduce(
-            (s, r) => s + Number(r.realisasiAngka),
-            0,
-          );
-        }
+        const l1AllIds = [l1.id, ...l1DescendantIds];
+        const l1RealisasiList = await this.realisasiRepository.find({
+          where: l1AllIds.map((id) => ({ indikatorId: id, tahun })),
+        });
+        const l1Realisasi = l1RealisasiList.reduce(
+          (s, r) => s + Number(r.realisasiAngka),
+          0,
+        );
         let l1TargetFak = 0;
         if (jenis === 'IKU') {
           const unitTargets = await this.targetUnitRepository.find({
@@ -215,16 +221,15 @@ export class MonitoringService {
         const l2Items: any[] = [];
         for (const l2 of level2Children) {
           const l2DescIds = await this.getAllDescendantIds(l2.id);
-          let l2Realisasi = 0;
-          if (l2DescIds.length > 0) {
-            const l2RealisasiList = await this.realisasiRepository.find({
-              where: l2DescIds.map((id) => ({ indikatorId: id, tahun })),
-            });
-            l2Realisasi = l2RealisasiList.reduce(
-              (s, r) => s + Number(r.realisasiAngka),
-              0,
-            );
-          }
+          // Include the node itself so leaf-level realisasi (no children) are counted
+          const l2AllIds = [l2.id, ...l2DescIds];
+          const l2RealisasiList = await this.realisasiRepository.find({
+            where: l2AllIds.map((id) => ({ indikatorId: id, tahun })),
+          });
+          const l2Realisasi = l2RealisasiList.reduce(
+            (s, r) => s + Number(r.realisasiAngka),
+            0,
+          );
           const l2UniTarget = await this.targetUniRepository.findOne({
             where: { indikatorId: l2.id, tahun },
           });
@@ -261,11 +266,13 @@ export class MonitoringService {
         baseline,
         targetFakultas: sumTargetFak,
         realisasi: sumRealisasi,
+        realisasiBiroPKU,
         persentaseRealisasi,
         tenggat: uniTarget?.tenggat || '-',
         status: tercapai ? 'Done' : 'Proses',
         progress,
-        chartProgress: progress,
+        // When no target is configured, use raw submission count as visual indicator (capped at 100)
+        chartProgress: progress > 0 ? progress : Math.min(100, effectiveRealisasi),
         subIndikators,
       });
     }
