@@ -434,8 +434,8 @@ const iku4_1_1 = await ind({ jenis: 'IKU', kode: '4.1.1', nama: 'Persentase dose
 const iku4_2_1 = await ind({ jenis: 'IKU', kode: '4.2.1', nama: 'Persentase dosen berpendidikan S3', level: 2, parentId: iku4_2.id });
 
 const ikuSS5 = await ind({ jenis: 'IKU', kode: '5', nama: 'Inovasi', level: 0, parentId: null });
-const iku5_1 = await ind({ jenis: 'IKU', kode: '5.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat yang berhasil mendapat rekognisi internasional atau diterapkan oleh masyarakat per jumlah dosen', level: 1, parentId: ikuSS5.id });
-const iku5_1_1 = await ind({ jenis: 'IKU', kode: '5.1.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat', level: 2, parentId: iku5_1.id });
+const iku5_1 = await ind({ jenis: 'IKU', kode: '5.1', nama: 'Persentase luaran hasil kerja sama PT dengan industri/lembaga', level: 1, parentId: ikuSS5.id });
+const iku5_1_1 = await ind({ jenis: 'IKU', kode: '5.1.1', nama: 'Persentase luaran hasil kerja sama PT dengan industri/lembaga', level: 2, parentId: iku5_1.id });
 
 const ikuSS6 = await ind({ jenis: 'IKU', kode: '6', nama: 'Inovasi', level: 0, parentId: null });
 const iku6_1 = await ind({ jenis: 'IKU', kode: '6.1', nama: 'Publikasi bereputasi internasional (Scopus/WoS)', level: 1, parentId: ikuSS6.id });

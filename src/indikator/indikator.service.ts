@@ -135,6 +135,13 @@ export class IndikatorService {
     }
   }
 
+  async getIkuOptions(tahun: string): Promise<Indikator[]> {
+    const rows = await this.indikatorRepository.find({
+      where: { jenis: 'IKU', level: 2, tahun },
+    });
+    return rows.sort(naturalSortKode);
+  }
+
   async findSubindikator(tahun?: string) {
     if (tahun) {
       return this.indikatorRepository.query(

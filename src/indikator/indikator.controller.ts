@@ -80,6 +80,12 @@ export class IndikatorController {
     return this.indikatorService.copyFromYear(body.fromTahun, body.toTahun);
   }
 
+  /** Daftar indikator IKU level 2 untuk pilihan link PK L3 berbasis IKU */
+  @Get('iku-options')
+  getIkuOptions(@Query('tahun') tahun: string) {
+    return this.indikatorService.getIkuOptions(tahun);
+  }
+
   @Post()
   create(
     @Body() data: {
@@ -90,6 +96,8 @@ export class IndikatorController {
       level: number;
       parentId?: number | null;
       jenisData?: string | null;
+      sumberData?: string;
+      linkedIkuId?: number | null;
     },
   ) {
     return this.indikatorService.create(data);
@@ -107,6 +115,7 @@ export class IndikatorController {
       parentId?: number | null;
       jenisData?: string | null;
       sumberData?: string;
+      linkedIkuId?: number | null;
     },
   ) {
     return this.indikatorService.update(id, data);

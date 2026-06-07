@@ -39,6 +39,10 @@ export class Indikator {
   @Column({ name: 'sumber_data', type: 'varchar', length: 20, default: 'repository' })
   sumberData!: string;
 
+  // Untuk PK L3: referensi ke indikator IKU yang menjadi dasar (cross-reading realisasi)
+  @Column({ name: 'linked_iku_id', type: 'int', nullable: true })
+  linkedIkuId!: number | null;
+
   // Alur disposisi: JSON array user ID yang menjadi penerima disposisi secara berurutan
   @Column({ name: 'cascade_chain', type: 'text', nullable: true })
   cascadeChain!: string | null;

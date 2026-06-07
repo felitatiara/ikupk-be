@@ -61,10 +61,15 @@ export class IntegrationService {
       throw new NotFoundException(`Indikator ID ${indikatorId} tidak ditemukan`);
     }
 
-    const jenisLabel = this.jenisLabelMap[indikator.jenis?.toUpperCase()] || indikator.jenis || '';
+    // PK L3 berbasis IKU: gunakan folder milik indikator IKU yang ditautkan
+    const source = indikator.linkedIkuId
+      ? ((await this.indikatorRepo.findOneBy({ id: indikator.linkedIkuId })) ?? indikator)
+      : indikator;
+
+    const jenisLabel = this.jenisLabelMap[source.jenis?.toUpperCase()] || source.jenis || '';
 
     const allFiles = await this.get<any[]>(
-      `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}&email=${encodeURIComponent(email)}`,
+      `/api/integration/files/search?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(source.kode)}&nama=${encodeURIComponent(source.nama)}&email=${encodeURIComponent(email)}`,
     );
 
     return {
@@ -88,11 +93,16 @@ export class IntegrationService {
       throw new NotFoundException(`Indikator ID ${indikatorId} tidak ditemukan`);
     }
 
-    const jenisLabel = this.jenisLabelMap[indikator.jenis?.toUpperCase()] || indikator.jenis || '';
+    // PK L3 berbasis IKU: gunakan folder milik indikator IKU yang ditautkan
+    const source = indikator.linkedIkuId
+      ? ((await this.indikatorRepo.findOneBy({ id: indikator.linkedIkuId })) ?? indikator)
+      : indikator;
+
+    const jenisLabel = this.jenisLabelMap[source.jenis?.toUpperCase()] || source.jenis || '';
     const secret = this.configService.get<string>('INTEGRATION_SECRET') ?? '';
 
     const files = await this.get<any[]>(
-      `/api/integration/files/unrestricted?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(indikator.kode)}&nama=${encodeURIComponent(indikator.nama)}`,
+      `/api/integration/files/unrestricted?jenis=${encodeURIComponent(jenisLabel)}&kode=${encodeURIComponent(source.kode)}&nama=${encodeURIComponent(source.nama)}`,
       { 'x-integration-secret': secret },
     );
 

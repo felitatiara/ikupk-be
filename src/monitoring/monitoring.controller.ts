@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, ParseIntPipe, Query, DefaultValuePipe } from '@nestjs/common';
 import { MonitoringService } from './monitoring.service';
 
 @Controller('monitoring')
@@ -47,5 +47,14 @@ export class MonitoringController {
     @Body() body: { indikatorId: number; tahun: string; jumlahValid: number | null; keterangan?: string; inputBy?: number },
   ) {
     return this.monitoringService.upsertValidasiBiroPKU(body);
+  }
+
+  @Get('scope')
+  async getScopeForUser(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('tahun') tahun: string,
+    @Query('jenis', new DefaultValuePipe('IKU')) jenis: string,
+  ) {
+    return this.monitoringService.getScopeForUser(userId, tahun, jenis);
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { TargetUniversitas } from '../target/target.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
@@ -103,6 +103,31 @@ export class MonitoringService {
     const allIndikators = await this.indikatorRepository.find();
     const results: any[] = [];
 
+    // Build cross-reading maps: PK id -> linked IKU id; IKU id -> [linked PK ids]
+    const linkedIkuMap = new Map<number, number>();
+    const linkedPkMap = new Map<number, number[]>();
+    for (const ind of allIndikators) {
+      if (ind.linkedIkuId) {
+        linkedIkuMap.set(ind.id, ind.linkedIkuId);
+        const list = linkedPkMap.get(ind.linkedIkuId) ?? [];
+        list.push(ind.id);
+        linkedPkMap.set(ind.linkedIkuId, list);
+      }
+    }
+
+    const expandIds = (ids: number[]): number[] => {
+      const extra: number[] = [];
+      for (const id of ids) {
+        if (jenis === 'PK') {
+          const linked = linkedIkuMap.get(id);
+          if (linked != null) extra.push(linked);
+        } else {
+          extra.push(...(linkedPkMap.get(id) ?? []));
+        }
+      }
+      return [...new Set([...ids, ...extra])];
+    };
+
     for (const l0 of level0Indikators) {
       const uniTarget = await this.targetUniRepository.findOne({
         where: { indikatorId: l0.id, tahun },
@@ -124,9 +149,10 @@ export class MonitoringService {
 
       // Collect all descendant IDs once — realisasi may be submitted at any level
       const allDescendantIds = await this.getAllDescendantIds(l0.id);
-      if (allDescendantIds.length > 0) {
+      const allRealisasiIds = expandIds(allDescendantIds);
+      if (allRealisasiIds.length > 0) {
         const realisasiList = await this.realisasiRepository.find({
-          where: allDescendantIds.map((id) => ({ indikatorId: id, tahun })),
+          where: allRealisasiIds.map((id) => ({ indikatorId: id, tahun })),
         });
         sumRealisasi = realisasiList.reduce(
           (s, r) => s + Number(r.realisasiAngka),
@@ -194,7 +220,7 @@ export class MonitoringService {
       const subIndikators: any[] = [];
       for (const l1 of level1Children) {
         const l1DescendantIds = await this.getAllDescendantIds(l1.id);
-        const l1AllIds = [l1.id, ...l1DescendantIds];
+        const l1AllIds = expandIds([l1.id, ...l1DescendantIds]);
         const l1RealisasiList = await this.realisasiRepository.find({
           where: l1AllIds.map((id) => ({ indikatorId: id, tahun })),
         });
@@ -222,7 +248,7 @@ export class MonitoringService {
         for (const l2 of level2Children) {
           const l2DescIds = await this.getAllDescendantIds(l2.id);
           // Include the node itself so leaf-level realisasi (no children) are counted
-          const l2AllIds = [l2.id, ...l2DescIds];
+          const l2AllIds = expandIds([l2.id, ...l2DescIds]);
           const l2RealisasiList = await this.realisasiRepository.find({
             where: l2AllIds.map((id) => ({ indikatorId: id, tahun })),
           });
@@ -292,9 +318,22 @@ export class MonitoringService {
     // Use all descendant IDs so we find realisasi submitted at any level (L1, L2, or L3)
     const allIds = await this.getAllDescendantIds(indikatorId);
 
+    // Cross-read: include linked IKU realisasi for PK, and linked PK realisasi for IKU
+    const linkedExtraIds: number[] = [];
+    for (const id of allIds) {
+      if (l0.jenis === 'PK') {
+        const ind = await this.indikatorRepository.findOne({ where: { id } });
+        if (ind?.linkedIkuId) linkedExtraIds.push(ind.linkedIkuId);
+      } else {
+        const linked = await this.indikatorRepository.find({ where: { linkedIkuId: id } });
+        linkedExtraIds.push(...linked.map((l) => l.id));
+      }
+    }
+    const effectiveIds = [...new Set([...allIds, ...linkedExtraIds])];
+
     const entries: any[] = [];
 
-    for (const leafId of allIds) {
+    for (const leafId of effectiveIds) {
       const indikator = await this.indikatorRepository.findOne({
         where: { id: leafId },
       });
@@ -446,5 +485,41 @@ export class MonitoringService {
     record.keterangan = data.keterangan ?? null;
     record.inputBy = data.inputBy ?? null;
     return this.validasiBiroPKURepository.save(record);
+  }
+
+  /**
+   * Kembalikan daftar L0 indikator ID yang berada dalam scope seorang user.
+   * Scope ditentukan dari: (1) cascadeChain pada indikator, (2) disposisi langsung ke user.
+   */
+  async getScopeForUser(userId: number, tahun: string, jenis: string): Promise<number[]> {
+    const l0s = await this.indikatorRepository.find({ where: { level: 0, jenis } });
+    const inScope: number[] = [];
+
+    const flattenChain = (chain: unknown[]): number[] =>
+      chain.flatMap(x => (Array.isArray(x) ? flattenChain(x) : typeof x === 'number' ? [x] : []));
+
+    for (const l0 of l0s) {
+      const descendantIds = await this.getAllDescendantIds(l0.id);
+      const allIds = [l0.id, ...descendantIds];
+
+      // 1. Check cascade chain di semua indikator dalam grup ini
+      const indicators = await this.indikatorRepository.findBy({ id: In(allIds) });
+      const inChain = indicators.some(ind => {
+        if (!ind.cascadeChain) return false;
+        try {
+          return flattenChain(JSON.parse(ind.cascadeChain)).includes(userId);
+        } catch { return false; }
+      });
+
+      if (inChain) { inScope.push(l0.id); continue; }
+
+      // 2. Check disposisi langsung ke user ini
+      const disp = await this.disposisiRepository.findOne({
+        where: { indikatorId: In(allIds), toUserId: userId, tahun },
+      });
+      if (disp) inScope.push(l0.id);
+    }
+
+    return inScope;
   }
 }
