@@ -307,20 +307,21 @@ export class MonitoringService {
   }
 
   /**
-   * Detail per indikator L0: list semua leaf realisasi dengan creator + files.
+   * Detail per indikator L0: list semua leaf realisasi + pohon disposisi dengan status per orang.
    */
   async getIndikatorDetail(indikatorId: number, tahun: string) {
     const l0 = await this.indikatorRepository.findOne({
       where: { id: indikatorId },
     });
-    if (!l0) return { indikator: null, entries: [] };
+    if (!l0) return { indikator: null, entries: [], disposisiChain: [] };
 
-    // Use all descendant IDs so we find realisasi submitted at any level (L1, L2, or L3)
-    const allIds = await this.getAllDescendantIds(indikatorId);
+    // All descendant IDs (L1, L2, L3 …)
+    const descIds = await this.getAllDescendantIds(indikatorId);
+    const allIds = [indikatorId, ...descIds];
 
     // Cross-read: include linked IKU realisasi for PK, and linked PK realisasi for IKU
     const linkedExtraIds: number[] = [];
-    for (const id of allIds) {
+    for (const id of descIds) {
       if (l0.jenis === 'PK') {
         const ind = await this.indikatorRepository.findOne({ where: { id } });
         if (ind?.linkedIkuId) linkedExtraIds.push(ind.linkedIkuId);
@@ -329,26 +330,22 @@ export class MonitoringService {
         linkedExtraIds.push(...linked.map((l) => l.id));
       }
     }
-    const effectiveIds = [...new Set([...allIds, ...linkedExtraIds])];
+    const effectiveIds = [...new Set([...descIds, ...linkedExtraIds])];
 
+    // ── Realisasi entries (unchanged) ─────────────────────────────────────────
     const entries: any[] = [];
-
     for (const leafId of effectiveIds) {
-      const indikator = await this.indikatorRepository.findOne({
-        where: { id: leafId },
-      });
+      const indikator = await this.indikatorRepository.findOne({ where: { id: leafId } });
       const realisasiList = await this.realisasiRepository.find({
         where: { indikatorId: leafId, tahun },
         relations: ['creator'],
         order: { createdAt: 'DESC' },
       });
-
       for (const r of realisasiList) {
         const files = await this.realisasiFileRepository.find({
           where: { realisasiId: r.id },
           order: { createdAt: 'ASC' },
         });
-
         entries.push({
           realisasiId: r.id,
           indikatorId: leafId,
@@ -371,9 +368,56 @@ export class MonitoringService {
       }
     }
 
+    // ── Disposisi chain ───────────────────────────────────────────────────────
+    const disposisiChain: any[] = [];
+    if (allIds.length > 0) {
+      const allDisposisi = await this.disposisiRepository.find({
+        where: { indikatorId: In(allIds), tahun },
+        relations: ['toUser', 'indikator'],
+        order: { id: 'ASC' },
+      });
+
+      for (const d of allDisposisi) {
+        // Match realisasi: prefer disposisi-linked, fallback to createdBy
+        let realisasiList = await this.realisasiRepository.find({
+          where: { disposisiId: d.id },
+        });
+        if (realisasiList.length === 0 && d.toUserId) {
+          realisasiList = await this.realisasiRepository.find({
+            where: { indikatorId: d.indikatorId, tahun, createdBy: d.toUserId },
+          });
+        }
+
+        const realisasiJumlah = realisasiList.reduce(
+          (s, r) => s + Number(r.realisasiAngka), 0,
+        );
+        const status: 'tercapai' | 'proses' | 'belum_input' =
+          realisasiList.length === 0
+            ? 'belum_input'
+            : realisasiJumlah >= Number(d.jumlahTarget)
+              ? 'tercapai'
+              : 'proses';
+
+        disposisiChain.push({
+          disposisiId: d.id,
+          parentDisposisiId: d.parentId,
+          indikatorId: d.indikatorId,
+          indikatorKode: d.indikator?.kode ?? '',
+          indikatorNama: d.indikator?.nama ?? '',
+          toUserId: d.toUserId,
+          toUserNama: (d.toUser as any)?.nama ?? `User ${d.toUserId}`,
+          toUserEmail: (d.toUser as any)?.email ?? '',
+          jumlahTarget: Number(d.jumlahTarget),
+          realisasiJumlah,
+          realisasiStatus: status,
+        });
+      }
+    }
+
     return {
       indikator: { id: l0.id, kode: l0.kode, nama: l0.nama, jenis: l0.jenis },
       entries,
+      disposisiChain,
     };
   }
 

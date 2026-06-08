@@ -389,6 +389,7 @@ export class IndikatorService {
         kode: root.kode,
         nama: root.nama,
         tahun: root.tahun,
+        kategori: root.kategori ?? null,
         persentaseTarget: storedTarget,
         targetAbsolut,
         satuan: uniTarget?.satuan ?? null,

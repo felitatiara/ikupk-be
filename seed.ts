@@ -54,7 +54,7 @@ async function upsertUserRole(repo: any, data: { userId: number; roleId: number;
   return await repo.save(repo.create(data));
 }
 
-async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: string; nama: string; tahun: string; level: number; parentId: number | null; jenisData?: string | null; sumberData?: string }) {
+async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: string; nama: string; tahun: string; level: number; parentId: number | null; jenisData?: string | null; sumberData?: string; kategori?: string | null }) {
   let existing = await repo.findOne({ where: { jenis: data.jenis, kode: data.kode, tahun: data.tahun } });
   if (existing) {
     existing.nama = data.nama;
@@ -62,9 +62,10 @@ async function findOrCreateIndikator(repo: any, data: { jenis: string; kode: str
     existing.parentId = data.parentId;
     existing.jenisData = data.jenisData ?? null;
     if (data.sumberData) existing.sumberData = data.sumberData;
+    if (data.kategori !== undefined) existing.kategori = data.kategori;
     return await repo.save(existing);
   }
-  return await repo.save(repo.create({ ...data, jenisData: data.jenisData ?? null, sumberData: data.sumberData ?? 'ikupk' }));
+  return await repo.save(repo.create({ ...data, jenisData: data.jenisData ?? null, sumberData: data.sumberData ?? 'ikupk', kategori: data.kategori ?? null }));
 }
 
 async function seed() {
@@ -398,7 +399,7 @@ await upsertUserRole(userRoleRepo, { userId: dekanUser.id, roleId: dosenFIKRole.
     findOrCreateIndikator(indikatorRepo, { ...data, tahun: TAHUN });
 
   // ─── IKU ──────────────────────────────────────────────────────────────────
-  const ikuSS1 = await ind({ jenis: 'IKU', kode: '1', nama: 'Talenta', level: 0, parentId: null });
+  const ikuSS1 = await ind({ jenis: 'IKU', kode: '1', nama: 'Talenta', level: 0, parentId: null, kategori: 'Wajib' });
 
 const iku1_1 = await ind({ jenis: 'IKU', kode: '1.1', nama: 'Angka Efisiensi Edukasi Perguruan Tinggi (AEE PT)', level: 1, parentId: ikuSS1.id });
 const iku1_2 = await ind({ jenis: 'IKU', kode: '1.2', nama: 'Persentase mahasiswa pascasarjana terhadap total mahasiswa', level: 1, parentId: ikuSS1.id });
@@ -413,19 +414,19 @@ const iku1_2_2 = await ind({ jenis: 'IKU', kode: '1.2.2', nama: 'Mahasiswa dokto
 
 const iku1_3_1 = await ind({ jenis: 'IKU', kode: '1.3.1', nama: 'Persentase mahasiswa internasional', level: 2, parentId: iku1_3.id });
 
-const ikuSS2 = await ind({ jenis: 'IKU', kode: '2', nama: 'Talenta', level: 0, parentId: null });
+const ikuSS2 = await ind({ jenis: 'IKU', kode: '2', nama: 'Talenta', level: 0, parentId: null, kategori: 'Wajib' });
 
 const iku2_1 = await ind({ jenis: 'IKU', kode: '2.1', nama: 'Persentase lulusan pendidikan tinggi akademik dan vokasi yang langsung bekerja/melanjutkan jenjang pendidikan berikutnya/berwirausaha dalam jangka waktu 1 tahun setelah kelulusan', level: 1, parentId: ikuSS2.id });
 
 const iku2_1_1 = await ind({ jenis: 'IKU', kode: '2.1.1', nama: 'Persentase lulusan pendidikan tinggi akademik dan vokasi yang langsung bekerja/melanjutkan jenjang pendidikan berikutnya/berwirausaha dalam jangka waktu 1 tahun setelah kelulusan', level: 2, parentId: iku2_1.id });
 
-const ikuSS3 = await ind({ jenis: 'IKU', kode: '3', nama: 'Talenta', level: 0, parentId: null });
+const ikuSS3 = await ind({ jenis: 'IKU', kode: '3', nama: 'Talenta', level: 0, parentId: null, kategori: 'Wajib' });
 
 const iku3_1 = await ind({ jenis: 'IKU', kode: '3.1', nama: 'Persentase mahasiswa S1 dan D4/D3/D2/D1 berkegiatan/meraih prestasi di luar program studi', level: 1, parentId: ikuSS3.id });
 
 const iku3_1_1 = await ind({ jenis: 'IKU', kode: '3.1.1', nama: 'Persentase mahasiswa S1 dan D4/D3/D2/D1 berkegiatan/meraih prestasi di luar program studi', level: 2, parentId: iku3_1.id });
 
-const ikuSS4 = await ind({ jenis: 'IKU', kode: '4', nama: 'Talenta', level: 0, parentId: null });
+const ikuSS4 = await ind({ jenis: 'IKU', kode: '4', nama: 'Talenta', level: 0, parentId: null, kategori: 'Pilihan' });
 
 const iku4_1 = await ind({ jenis: 'IKU', kode: '4.1', nama: 'Persentase dosen PT yang mendapatkan rekognisi internasional', level: 1, parentId: ikuSS4.id });
 const iku4_2 = await ind({ jenis: 'IKU', kode: '4.2', nama: 'Persentase dosen berpendidikan S3', level: 1, parentId: ikuSS4.id });
@@ -433,29 +434,35 @@ const iku4_2 = await ind({ jenis: 'IKU', kode: '4.2', nama: 'Persentase dosen be
 const iku4_1_1 = await ind({ jenis: 'IKU', kode: '4.1.1', nama: 'Persentase dosen PT yang mendapatkan rekognisi internasional', level: 2, parentId: iku4_1.id });
 const iku4_2_1 = await ind({ jenis: 'IKU', kode: '4.2.1', nama: 'Persentase dosen berpendidikan S3', level: 2, parentId: iku4_2.id });
 
+<<<<<<< HEAD
 const ikuSS5 = await ind({ jenis: 'IKU', kode: '5', nama: 'Inovasi', level: 0, parentId: null });
 const iku5_1 = await ind({ jenis: 'IKU', kode: '5.1', nama: 'Persentase luaran hasil kerja sama PT dengan industri/lembaga', level: 1, parentId: ikuSS5.id });
 const iku5_1_1 = await ind({ jenis: 'IKU', kode: '5.1.1', nama: 'Persentase luaran hasil kerja sama PT dengan industri/lembaga', level: 2, parentId: iku5_1.id });
+=======
+const ikuSS5 = await ind({ jenis: 'IKU', kode: '5', nama: 'Inovasi', level: 0, parentId: null, kategori: 'Wajib' });
+const iku5_1 = await ind({ jenis: 'IKU', kode: '5.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat yang berhasil mendapat rekognisi internasional atau diterapkan oleh masyarakat per jumlah dosen', level: 1, parentId: ikuSS5.id });
+const iku5_1_1 = await ind({ jenis: 'IKU', kode: '5.1.1', nama: 'Jumlah luaran penelitian dan pengabdian kepada masyarakat', level: 2, parentId: iku5_1.id });
+>>>>>>> cee55b6772088b5ca1614d051bac0371d6345651
 
-const ikuSS6 = await ind({ jenis: 'IKU', kode: '6', nama: 'Inovasi', level: 0, parentId: null });
+const ikuSS6 = await ind({ jenis: 'IKU', kode: '6', nama: 'Inovasi', level: 0, parentId: null, kategori: 'Pilihan' });
 const iku6_1 = await ind({ jenis: 'IKU', kode: '6.1', nama: 'Publikasi bereputasi internasional (Scopus/WoS)', level: 1, parentId: ikuSS6.id });
 const iku6_1_1 = await ind({ jenis: 'IKU', kode: '6.1.1', nama: 'Artikel Scopus/WoS', level: 2, parentId: iku6_1.id });
 const iku6_1_2 = await ind({ jenis: 'IKU', kode: '6.1.2', nama: 'Buku', level: 2, parentId: iku6_1.id });
 const iku6_1_3 = await ind({ jenis: 'IKU', kode: '6.1.3', nama: 'Prosiding Internasional', level: 2, parentId: iku6_1.id });
 const iku6_1_4 = await ind({ jenis: 'IKU', kode: '6.1.4', nama: 'HKI/Paten', level: 2, parentId: iku6_1.id });
 
-const ikuSS7 = await ind({ jenis: 'IKU', kode: '7', nama: 'Inovasi', level: 0, parentId: null });
+const ikuSS7 = await ind({ jenis: 'IKU', kode: '7', nama: 'Inovasi', level: 0, parentId: null, kategori: 'Wajib' });
 const iku7_1 = await ind({ jenis: 'IKU', kode: '7.1', nama: 'Persentase kegiatan penelitian dan pengabdian kepada masyarakat yang melibatkan mahasiswa', level: 1, parentId: ikuSS7.id });
 const iku7_1_1 = await ind({ jenis: 'IKU', kode: '7.1.1', nama: 'Buku', level: 2, parentId: iku7_1.id });
 const iku7_1_2 = await ind({ jenis: 'IKU', kode: '7.1.2', nama: 'Mata Kuliah', level: 2, parentId: iku7_1.id });
 const iku7_1_3 = await ind({ jenis: 'IKU', kode: '7.1.3', nama: 'Judul Penelitian', level: 2, parentId: iku7_1.id });
 const iku7_1_4 = await ind({ jenis: 'IKU', kode: '7.1.4', nama: 'Judul Pengabdian', level: 2, parentId: iku7_1.id });
 
-const ikuSS8 = await ind({ jenis: 'IKU', kode: '8', nama: 'Kontribusi pada Masyarakat', level: 0, parentId: null });
+const ikuSS8 = await ind({ jenis: 'IKU', kode: '8', nama: 'Kontribusi pada Masyarakat', level: 0, parentId: null, kategori: 'Pilihan' });
 const iku8_1 = await ind({ jenis: 'IKU', kode: '8.1', nama: 'Persentase SDM PT (dosen dan peneliti) yang terlibat langsung dalam penyusunan kebijakan (nasional/daerah/industri)', level: 1, parentId: ikuSS8.id });
 const iku8_1_1 = await ind({ jenis: 'IKU', kode: '8.1.1', nama: 'Persentase SDM PT (dosen dan peneliti) yang terlibat langsung dalam penyusunan kebijakan (nasional/daerah/industri)', level: 2, parentId: iku8_1.id });
 
-const ikuSS10 = await ind({ jenis: 'IKU', kode: '10', nama: 'Tata Kelola berintegritas', level: 0, parentId: null });
+const ikuSS10 = await ind({ jenis: 'IKU', kode: '10', nama: 'Tata Kelola berintegritas', level: 0, parentId: null, kategori: 'Pilihan' });
 const iku10_1 = await ind({ jenis: 'IKU', kode: '10.1', nama: 'Jumlah usulan Zona Integritas - WBK/WBBM', level: 1, parentId: ikuSS10.id });
 const iku10_1_1 = await ind({ jenis: 'IKU', kode: '10.1.1', nama: 'Jumlah usulan Zona Integritas - WBK/WBBM', level: 2, parentId: iku10_1.id });
 

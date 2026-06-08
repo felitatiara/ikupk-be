@@ -96,8 +96,12 @@ export class IndikatorController {
       level: number;
       parentId?: number | null;
       jenisData?: string | null;
+<<<<<<< HEAD
       sumberData?: string;
       linkedIkuId?: number | null;
+=======
+      kategori?: string | null;
+>>>>>>> cee55b6772088b5ca1614d051bac0371d6345651
     },
   ) {
     return this.indikatorService.create(data);
@@ -115,7 +119,11 @@ export class IndikatorController {
       parentId?: number | null;
       jenisData?: string | null;
       sumberData?: string;
+<<<<<<< HEAD
       linkedIkuId?: number | null;
+=======
+      kategori?: string | null;
+>>>>>>> cee55b6772088b5ca1614d051bac0371d6345651
     },
   ) {
     return this.indikatorService.update(id, data);
