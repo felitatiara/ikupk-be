@@ -39,6 +39,10 @@ export class Indikator {
   @Column({ name: 'sumber_data', type: 'varchar', length: 20, default: 'repository' })
   sumberData!: string;
 
+  // 'Wajib' | 'Pilihan' | 'Partisipatif' — hanya untuk IKU level 0
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  kategori!: string | null;
+
   // Alur disposisi: JSON array user ID yang menjadi penerima disposisi secara berurutan
   @Column({ name: 'cascade_chain', type: 'text', nullable: true })
   cascadeChain!: string | null;

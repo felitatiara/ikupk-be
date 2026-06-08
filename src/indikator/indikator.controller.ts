@@ -90,6 +90,7 @@ export class IndikatorController {
       level: number;
       parentId?: number | null;
       jenisData?: string | null;
+      kategori?: string | null;
     },
   ) {
     return this.indikatorService.create(data);
@@ -107,6 +108,7 @@ export class IndikatorController {
       parentId?: number | null;
       jenisData?: string | null;
       sumberData?: string;
+      kategori?: string | null;
     },
   ) {
     return this.indikatorService.update(id, data);
