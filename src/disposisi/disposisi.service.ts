@@ -64,6 +64,16 @@ export class DisposisiService {
       }
     }
 
+    // Auto-resolve parentId: cari disposisi yang diterima fromUserId untuk indikator ini
+    let resolvedParentId = parentId ?? null;
+    if (fromUserId && resolvedParentId === null) {
+      const parentDisposisi = await this.disposisiRepo.findOne({
+        where: { toUserId: fromUserId, indikatorId, tahun },
+        order: { id: 'ASC' },
+      });
+      resolvedParentId = parentDisposisi?.id ?? null;
+    }
+
     const deleteQb = this.disposisiRepo
       .createQueryBuilder()
       .delete()
@@ -87,7 +97,7 @@ export class DisposisiService {
           toUserId: item.toUserId,
           jumlahTarget: item.jumlahTarget,
           fromUserId: fromUserId ?? null,
-          parentId: parentId ?? null,
+          parentId: resolvedParentId,
           status: 'diterima',
         }),
       );

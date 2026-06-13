@@ -357,6 +357,7 @@ export class IndikatorService {
                       tenggat: l3UniTarget?.tenggat ?? null,
                       satuan: l3UniTarget?.satuan ?? null,
                       sumberData: String(l3.sumberData || 'repository'),
+                      linkedIkuId: l3.linkedIkuId ?? null,
                     };
                   }),
                 ),
