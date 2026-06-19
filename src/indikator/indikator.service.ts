@@ -214,6 +214,85 @@ export class IndikatorService {
     return { copied: sourceIndikators.length };
   }
 
+  async importBulk(
+    jenis: string,
+    tahun: string,
+    rows: Array<{
+      kode: string;
+      nama: string;
+      level: number;
+      parentKode: string | null;
+      kategori: string | null;
+      tenggat: string | null;
+      target: number | null;
+      satuan: string | null;
+      sumberData: string;
+    }>,
+  ): Promise<{ imported: number; errors: string[] }> {
+    const errors: string[] = [];
+    const kodeToId = new Map<string, number>();
+
+    for (const row of rows) {
+      try {
+        const parentId = row.parentKode ? (kodeToId.get(row.parentKode) ?? null) : null;
+
+        let indikator = await this.indikatorRepository.findOne({
+          where: { jenis, tahun, kode: row.kode },
+        });
+
+        if (indikator) {
+          indikator.nama = row.nama;
+          indikator.level = row.level;
+          indikator.parentId = parentId;
+          if (row.kategori) indikator.kategori = row.kategori;
+          indikator.sumberData = row.sumberData || 'repository';
+          indikator = await this.indikatorRepository.save(indikator);
+        } else {
+          indikator = await this.indikatorRepository.save(
+            this.indikatorRepository.create({
+              jenis,
+              tahun,
+              kode: row.kode,
+              nama: row.nama,
+              level: row.level,
+              parentId,
+              kategori: row.kategori ?? null,
+              sumberData: row.sumberData || 'repository',
+            }),
+          );
+        }
+
+        kodeToId.set(row.kode, indikator.id);
+
+        if (row.target != null) {
+          const existing = await this.targetUniRepo.findOne({
+            where: { indikatorId: indikator.id, tahun },
+          });
+          if (existing) {
+            existing.persentase = row.target;
+            if (row.satuan) existing.satuan = row.satuan;
+            if (row.tenggat) existing.tenggat = row.tenggat;
+            await this.targetUniRepo.save(existing);
+          } else {
+            await this.targetUniRepo.save(
+              this.targetUniRepo.create({
+                indikatorId: indikator.id,
+                tahun,
+                persentase: row.target,
+                satuan: row.satuan ?? null,
+                tenggat: row.tenggat ?? null,
+              }),
+            );
+          }
+        }
+      } catch (err: any) {
+        errors.push(`Baris kode=${row.kode}: ${err?.message ?? 'Unknown error'}`);
+      }
+    }
+
+    return { imported: kodeToId.size, errors };
+  }
+
   // ── Baseline helper ────────────────────────────────────────────────────────
 
   private async findBaselineForIndikator(
