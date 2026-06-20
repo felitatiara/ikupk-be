@@ -510,12 +510,14 @@ export class IndikatorService {
     ];
     const fromUserLevelMap = new Map<number, number>();
     if (fromUserIds.length > 0) {
-      const fromUserPrimaryRoles = await this.userRoleRepo.find({
-        where: { userId: In(fromUserIds), isPrimary: true },
+      const allFromUserRoles = await this.userRoleRepo.find({
+        where: { userId: In(fromUserIds) },
         relations: ['role'],
       });
-      for (const ur of fromUserPrimaryRoles) {
-        fromUserLevelMap.set(ur.userId, ur.role?.level ?? 99);
+      for (const ur of allFromUserRoles) {
+        const thisLevel = ur.role?.level ?? 99;
+        const current = fromUserLevelMap.get(ur.userId) ?? 99;
+        if (thisLevel < current) fromUserLevelMap.set(ur.userId, thisLevel);
       }
     }
 
@@ -545,22 +547,28 @@ export class IndikatorService {
       disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
     }
 
-    // Auto-cascade: jika roleId user ada dalam cascadeChain suatu L0,
-    // otomatis terima semua L1 di bawahnya tanpa disposisi manual
+    // Auto-cascade: semua role dalam cascadeChain suatu L1 otomatis menerima
+    // L1 tersebut beserta anak-anaknya. Chain selalu disimpan di level L1
+    // (bukan L0) karena tombol "Alur" hanya muncul di baris L1.
     const allInds = await this.indikatorRepository.find({
       where: { jenis, tahun },
     });
-    const l0s = allInds.filter((i) => i.level === 0);
-    const cascadedL0Ids = new Set<number>();
-    for (const l0 of l0s) {
-      if (!l0.cascadeChain) continue;
+
+    function isRoleInChain(chain: unknown[], rid: number): boolean {
+      return chain.some((step) => {
+        const roles = Array.isArray(step)
+          ? (step as unknown[]).map(Number)
+          : [Number(step)];
+        return roles.includes(rid);
+      });
+    }
+
+    const cascadedL1Ids = new Set<number>();
+    for (const ind of allInds) {
+      if (!ind.cascadeChain || ind.level !== 1) continue;
       try {
-        const chain = JSON.parse(l0.cascadeChain) as unknown[];
-        const firstStep = chain[0];
-        const firstRoles = Array.isArray(firstStep)
-          ? (firstStep as unknown[]).map(Number)
-          : [Number(firstStep)];
-        if (firstRoles.includes(Number(roleId))) cascadedL0Ids.add(l0.id);
+        const chain = JSON.parse(ind.cascadeChain) as unknown[];
+        if (isRoleInChain(chain, Number(roleId))) cascadedL1Ids.add(ind.id);
       } catch {
         /* skip malformed chain */
       }
@@ -568,7 +576,7 @@ export class IndikatorService {
 
     const fullGrouped = await this.findGrouped(jenis, tahun, roleId);
 
-    if (cascadedL0Ids.size > 0) {
+    if (cascadedL1Ids.size > 0) {
       type CascadeLeaf = {
         id: number;
         nilaiTarget: number | null;
@@ -580,9 +588,9 @@ export class IndikatorService {
       };
       const typedGrouped = fullGrouped as CascadeGroup[];
       for (const group of typedGrouped) {
-        if (!cascadedL0Ids.has(group.id)) continue;
         for (const sub of group.subIndikators) {
-          // Cascade L2 children dulu — nilaiTarget berisi fallback dari target_universitas
+          if (!cascadedL1Ids.has(sub.id)) continue;
+          // Cascade L2 children — nilaiTarget berisi fallback dari target_universitas
           for (const child of sub.children ?? []) {
             if (
               !disposisiByIndikator.has(child.id) &&
@@ -629,13 +637,21 @@ export class IndikatorService {
       }
     }
 
+    // L0 group IDs yang memiliki setidaknya satu L1 terkena cascade
+    const cascadedGroupIds = new Set<number>();
+    for (const group of fullGrouped as GroupNode[]) {
+      for (const sub of group.subIndikators) {
+        if (cascadedL1Ids.has(sub.id)) { cascadedGroupIds.add(group.id); break; }
+      }
+    }
+
     // Map L0 group id → fromUser name (only for non-cascaded, i.e. penerima 2+)
     const fromUserNameByL0 = new Map<number, string>();
     for (const d of receivedFromOthers) {
       const l0Id = indToL0Map.get(d.indikatorId);
       const fromUser = d['fromUser'] as { nama?: string } | null | undefined;
       const fromUserNama = fromUser?.nama;
-      if (l0Id && fromUserNama && !cascadedL0Ids.has(l0Id)) {
+      if (l0Id && fromUserNama && !cascadedGroupIds.has(l0Id)) {
         if (!fromUserNameByL0.has(l0Id)) {
           fromUserNameByL0.set(l0Id, fromUserNama);
         }
@@ -699,8 +715,8 @@ export class IndikatorService {
         }
       }
       if (filteredSubs.length > 0) {
-        const fromUserNama = cascadedL0Ids.has(group.id)
-          ? 'Dekan'
+        const fromUserNama = cascadedGroupIds.has(group.id)
+          ? null
           : (fromUserNameByL0.get(group.id) ?? null);
         filtered.push({ ...group, subIndikators: filteredSubs, fromUserNama });
       }

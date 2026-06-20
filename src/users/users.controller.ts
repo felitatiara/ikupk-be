@@ -44,6 +44,11 @@ export class UsersController {
     return { hasRelated: has };
   }
 
+  @Get('all-bawahan')
+  findAllBawahan(@Query('userId', ParseIntPipe) userId: number) {
+    return this.usersService.findAllBawahanFor(userId);
+  }
+
   @Get('dosen-by-unit')
   findDosenByUnit(@Query('unitNama') unitNama: string) {
     return this.usersService.findDosenByUnit(unitNama);
