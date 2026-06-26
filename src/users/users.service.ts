@@ -250,6 +250,25 @@ export class UsersService {
     return count > 0;
   }
 
+  async findAllBawahanFor(userId: number): Promise<any[]> {
+    const result = new Map<number, any>();
+    const queue = [userId];
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const relations = await this.userRelationRepo.find({
+        where: { parentId: currentId },
+        relations: ['user', 'user.userRoles', 'user.userRoles.role'],
+      });
+      for (const rel of relations) {
+        if (rel.user && !result.has(rel.user.id)) {
+          result.set(rel.user.id, this.mapUserDto(rel.user));
+          queue.push(rel.user.id);
+        }
+      }
+    }
+    return [...result.values()];
+  }
+
   async findByRoleLevel(level: number): Promise<any[]> {
     const userRoles = await this.userRoleRepo.find({
       where: { isPrimary: true, role: { level } },

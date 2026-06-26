@@ -74,6 +74,28 @@ export class IndikatorController {
     return this.indikatorService.findGroupedForUser(jenis, tahun, userId, roleId);
   }
 
+  /** Bulk import indikator dari hasil parse Excel di frontend */
+  @Post('import-bulk')
+  importBulk(
+    @Body() body: {
+      jenis: string;
+      tahun: string;
+      rows: Array<{
+        kode: string;
+        nama: string;
+        level: number;
+        parentKode: string | null;
+        kategori: string | null;
+        tenggat: string | null;
+        target: number | null;
+        satuan: string | null;
+        sumberData: string;
+      }>;
+    },
+  ) {
+    return this.indikatorService.importBulk(body.jenis, body.tahun, body.rows);
+  }
+
   /** Copy semua indikator dari tahun lama ke tahun baru */
   @Post('copy-year')
   copyFromYear(@Body() body: { fromTahun: string; toTahun: string }) {

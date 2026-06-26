@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat .env)",
+      "Bash(cat .env.example)",
+      "Bash(curl -s \"http://localhost:3005/api/integration/files/search?jenis=Indikator+Kinerja+Utama&kode=1.1&nama=test&email=test@test.com\")",
+      "Bash(psql -U postgres -d repository -c \"SELECT id, name, parent_id FROM folders LIMIT 20;\")",
+      "Bash(psql -U postgres -d repository -c \"SELECT COUNT\\(*\\) FROM folders; SELECT COUNT\\(*\\) FROM files;\")",
+      "Bash(curl -s \"http://localhost:3005/api/integration/files/search?kode=2.1.1.1&nama=Pengelolaan+bimbingan+konseling&email=zatin@fik.ac.id\")"
+    ]
+  }
+}

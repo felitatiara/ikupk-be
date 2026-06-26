@@ -281,6 +281,7 @@ export class RealisasiService {
     status: 'approved' | 'rejected' | 'pending';
     realisasi: any[];
     atasan: { nama: string; nip: string | null } | null;
+    atasanPenilai: { nama: string; nip: string | null } | null;
   }> {
     const realisasiList = await this.realisasiRepository.find({
       where: { createdBy: userId, tahun },
@@ -288,7 +289,7 @@ export class RealisasiService {
     });
 
     if (realisasiList.length === 0) {
-      return { status: 'pending', realisasi: [], atasan: null };
+      return { status: 'pending', realisasi: [], atasan: null, atasanPenilai: null };
     }
 
     const statuses = realisasiList.map((r) => r.status);
@@ -298,45 +299,54 @@ export class RealisasiService {
       ? 'rejected'
       : 'pending';
 
-    // Cek apakah user ini adalah WD2
+    // Cek role user ini
     const myUserRole = await this.userRoleRepository.findOne({
       where: { userId, isPrimary: true },
       relations: ['role'],
     });
     const myRoleName = (myUserRole?.role?.name ?? '').toLowerCase();
-    const isWD2 =
-      myRoleName.includes('wakil dekan 2') ||
-      myRoleName.includes('wakil dekan ii') ||
-      myRoleName.includes('wd2');
+    const isWD1 =
+      myRoleName.includes('wakil dekan 1') ||
+      myRoleName.includes('wd1') ||
+      myRoleName.includes('wakil dekan bidang akademik');
+
+    // Cari WD1 (Pejabat Penilai Kinerja) dan Dekan (Atasan Pejabat Penilai Kinerja)
+    const wd1Row = await this.userRoleRepository
+      .createQueryBuilder('ur')
+      .innerJoinAndSelect('ur.user', 'u')
+      .innerJoinAndSelect('ur.role', 'r')
+      .where('ur.isPrimary = true')
+      .andWhere(
+        "LOWER(r.name) LIKE :n1 OR LOWER(r.name) LIKE :n2 OR LOWER(r.name) LIKE :n3",
+        { n1: '%wakil dekan 1%', n2: '%wd1%', n3: '%wakil dekan bidang akademik%' },
+      )
+      .getOne();
+
+    const dekanRow = await this.userRoleRepository
+      .createQueryBuilder('ur')
+      .innerJoinAndSelect('ur.user', 'u')
+      .innerJoinAndSelect('ur.role', 'r')
+      .where('ur.isPrimary = true')
+      .andWhere("LOWER(r.name) = 'dekan'")
+      .getOne();
 
     let penilai: { nama: string; nip: string | null } | null = null;
+    let atasanPenilai: { nama: string; nip: string | null } | null = null;
 
-    if (isWD2) {
-      // Penilai WD2 adalah Dekan
-      const dekanRow = await this.userRoleRepository
-        .createQueryBuilder('ur')
-        .innerJoinAndSelect('ur.user', 'u')
-        .innerJoinAndSelect('ur.role', 'r')
-        .where('ur.isPrimary = true')
-        .andWhere("LOWER(r.name) = 'dekan'")
-        .getOne();
+    if (isWD1) {
+      // Penilai WD1 adalah Dekan (sebagai Atasan Pejabat Penilai Kinerja)
       penilai = dekanRow?.user
         ? { nama: dekanRow.user.nama, nip: (dekanRow.user as any).nip ?? null }
         : null;
+      atasanPenilai = null;
     } else {
-      // Penilai dosen/lainnya adalah WD2
-      const wd2Row = await this.userRoleRepository
-        .createQueryBuilder('ur')
-        .innerJoinAndSelect('ur.user', 'u')
-        .innerJoinAndSelect('ur.role', 'r')
-        .where('ur.isPrimary = true')
-        .andWhere(
-          "LOWER(r.name) LIKE :n1 OR LOWER(r.name) LIKE :n2 OR LOWER(r.name) LIKE :n3",
-          { n1: '%wakil dekan 2%', n2: '%wakil dekan ii%', n3: '%wd2%' },
-        )
-        .getOne();
-      penilai = wd2Row?.user
-        ? { nama: wd2Row.user.nama, nip: (wd2Row.user as any).nip ?? null }
+      // Pejabat Penilai Kinerja untuk dosen/tendik adalah WD1
+      penilai = wd1Row?.user
+        ? { nama: wd1Row.user.nama, nip: (wd1Row.user as any).nip ?? null }
+        : null;
+      // Atasan Pejabat Penilai Kinerja adalah Dekan
+      atasanPenilai = dekanRow?.user
+        ? { nama: dekanRow.user.nama, nip: (dekanRow.user as any).nip ?? null }
         : null;
     }
 
@@ -352,6 +362,7 @@ export class RealisasiService {
         status: r.status,
       })),
       atasan: penilai,
+      atasanPenilai,
     };
   }
 
