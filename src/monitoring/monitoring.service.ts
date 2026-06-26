@@ -73,6 +73,21 @@ export class MonitoringService {
     return leafIds;
   }
 
+  /** Build ancestor chain from root down to the given indikator */
+  private async getIndikatorHierarchy(indikatorId: number): Promise<{ kode: string; nama: string; level: number }[]> {
+    const chain: { kode: string; nama: string; level: number }[] = [];
+    let current = await this.indikatorRepository.findOne({ where: { id: indikatorId } });
+    while (current) {
+      chain.unshift({ kode: current.kode, nama: current.nama, level: current.level });
+      if (current.parentId) {
+        current = await this.indikatorRepository.findOne({ where: { id: current.parentId } });
+      } else {
+        break;
+      }
+    }
+    return chain;
+  }
+
   /** Collect ALL descendant indikator IDs (any level) under a parent */
   private async getAllDescendantIds(parentId: number): Promise<number[]> {
     const children = await this.indikatorRepository.find({
@@ -259,6 +274,7 @@ export class MonitoringService {
           const l2UniTarget = await this.targetUniRepository.findOne({
             where: { indikatorId: l2.id, tahun },
           });
+          const l2TargetVal = l2UniTarget ? Number(l2UniTarget.persentase || 0) : 0;
           l2Items.push({
             id: l2.id,
             kode: l2.kode,
@@ -266,6 +282,7 @@ export class MonitoringService {
             realisasi: l2Realisasi,
             nilaiTarget: l2UniTarget ? Number(l2UniTarget.persentase) : null,
             satuan: l2UniTarget?.satuan ?? null,
+            status: l2TargetVal > 0 && l2Realisasi >= l2TargetVal ? 'Done' : 'Proses',
           });
         }
 
@@ -286,6 +303,7 @@ export class MonitoringService {
         kode: l0.kode,
         nama: l0.nama,
         jenis: l0.jenis,
+        kategori: l0.kategori ?? null,
         targetUniversitas: persentaseTarget, // IKU: %; PK: nilai absolut
         satuan: uniTarget?.satuan ?? null,
         targetAbsolut,
@@ -297,7 +315,6 @@ export class MonitoringService {
         tenggat: uniTarget?.tenggat || '-',
         status: tercapai ? 'Done' : 'Proses',
         progress,
-        // When no target is configured, use raw submission count as visual indicator (capped at 100)
         chartProgress: progress > 0 ? progress : Math.min(100, effectiveRealisasi),
         subIndikators,
       });
@@ -398,12 +415,15 @@ export class MonitoringService {
               ? 'tercapai'
               : 'proses';
 
+        const indikatorHierarchy = await this.getIndikatorHierarchy(d.indikatorId);
         disposisiChain.push({
           disposisiId: d.id,
           parentDisposisiId: d.parentId,
           indikatorId: d.indikatorId,
           indikatorKode: d.indikator?.kode ?? '',
           indikatorNama: d.indikator?.nama ?? '',
+          indikatorLevel: d.indikator?.level ?? 0,
+          indikatorHierarchy,
           toUserId: d.toUserId,
           toUserNama: (d.toUser as any)?.nama ?? `User ${d.toUserId}`,
           toUserEmail: (d.toUser as any)?.email ?? '',
