@@ -533,11 +533,16 @@ export class IndikatorService {
       if (fromLevel === currentRoleLevel) return currentRoleLevel <= 1;
       return fromLevel < currentRoleLevel;
     });
+    // Track level pengirim per indikator untuk ambil yang paling langsung (level tertinggi = angka terkecil)
+    const senderLevelByIndikator = new Map<number, number>();
     for (const d of receivedFromOthers) {
-      disposisiByIndikator.set(
-        d.indikatorId,
-        (disposisiByIndikator.get(d.indikatorId) ?? 0) + Number(d.jumlahTarget),
-      );
+      const fromLevel = fromUserLevelMap.get(d.fromUserId ?? 0) ?? 99;
+      const existingLevel = senderLevelByIndikator.get(d.indikatorId) ?? 99;
+      // Pakai nilai dari pengirim paling langsung (level paling rendah angkanya)
+      if (fromLevel <= existingLevel) {
+        disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
+        senderLevelByIndikator.set(d.indikatorId, fromLevel);
+      }
     }
 
     // Jika user mendisposisikan ke diri sendiri, tampilkan jumlah self-disposisi

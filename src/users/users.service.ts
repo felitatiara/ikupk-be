@@ -39,6 +39,7 @@ export class UsersService {
 
     return users.map((u) => {
       const primaryRole = u.userRoles?.find((ur) => ur.isPrimary) ?? u.userRoles?.[0];
+      const seniorRole = [...(u.userRoles ?? [])].sort((a, b) => (a.role?.level ?? 99) - (b.role?.level ?? 99))[0] ?? primaryRole;
       const atasanRels = atasanMap.get(u.id) ?? [];
       return {
         id: u.id,
@@ -46,9 +47,9 @@ export class UsersService {
         nama: u.nama,
         email: u.email,
         jenis: u.jenis,
-        role: primaryRole?.role?.name ?? '',
+        role: seniorRole?.role?.name ?? '',
         roleId: primaryRole?.roleId ?? null,
-        roleLevel: primaryRole?.role?.level ?? null,
+        roleLevel: seniorRole?.role?.level ?? null,
         unitNama: primaryRole?.role?.unitNama ?? null,
         atasanId: atasanRels[0]?.parentId ?? null,
         atasanNama: atasanRels[0]?.parent?.nama ?? null,
@@ -117,9 +118,13 @@ export class UsersService {
     // Assign atasan relations (atasanIds takes priority over atasanId)
     const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
     for (const pid of atasanIdList) {
-      await this.userRelationRepo.save(
-        this.userRelationRepo.create({ userId: savedUser.id, parentId: pid }),
-      );
+      await this.userRelationRepo
+        .createQueryBuilder()
+        .insert()
+        .into(UserRelation)
+        .values({ userId: savedUser.id, parentId: pid })
+        .orIgnore()
+        .execute();
     }
 
     return (await this.findOne(savedUser.id))!;
@@ -192,12 +197,22 @@ export class UsersService {
 
     // Update atasan relations (atasanIds takes priority over atasanId)
     if (dto.atasanIds !== undefined || dto.atasanId !== undefined) {
-      await this.userRelationRepo.delete({ userId: id });
+      await this.userRelationRepo
+        .createQueryBuilder()
+        .delete()
+        .from(UserRelation)
+        .where('"user_id" = :userId', { userId: id })
+        .execute();
       const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
+      console.log(`[users.service] update user ${id}: saving atasanIds=${JSON.stringify(atasanIdList)}`);
       for (const pid of atasanIdList) {
-        await this.userRelationRepo.save(
-          this.userRelationRepo.create({ userId: id, parentId: pid }),
-        );
+        await this.userRelationRepo
+          .createQueryBuilder()
+          .insert()
+          .into(UserRelation)
+          .values({ userId: id, parentId: pid })
+          .orIgnore()
+          .execute();
       }
     }
 
@@ -235,14 +250,18 @@ export class UsersService {
   }
 
   async findRelatedUsersFor(userId: number): Promise<any[]> {
-    const relations = await this.userRelationRepo.find({
-      where: { parentId: userId },
-      relations: ['user', 'user.userRoles', 'user.userRoles.role'],
+    const rels = await this.userRelationRepo
+      .createQueryBuilder('ur')
+      .select('ur.user_id', 'userid')
+      .where('ur.parent_id = :parentId', { parentId: userId })
+      .getRawMany<{ userid: string }>();
+    if (rels.length === 0) return [];
+    const userIds = rels.map((r) => Number(r.userid));
+    const users = await this.usersRepository.find({
+      where: { id: In(userIds) },
+      relations: ['userRoles', 'userRoles.role'],
     });
-    return relations
-      .map((r) => r.user)
-      .filter(Boolean)
-      .map((u) => this.mapUserDto(u as User));
+    return users.map((u) => this.mapUserDto(u));
   }
 
   async hasRelatedUsers(userId: number): Promise<boolean> {
@@ -250,19 +269,33 @@ export class UsersService {
     return count > 0;
   }
 
+  async debugRelations(parentId: number): Promise<any[]> {
+    const rels = await this.userRelationRepo.find({
+      where: { parentId },
+    });
+    return rels.map(r => ({ id: r.id, userId: r.userId, parentId: r.parentId }));
+  }
+
   async findAllBawahanFor(userId: number): Promise<any[]> {
     const result = new Map<number, any>();
     const queue = [userId];
     while (queue.length > 0) {
       const currentId = queue.shift()!;
-      const relations = await this.userRelationRepo.find({
-        where: { parentId: currentId },
-        relations: ['user', 'user.userRoles', 'user.userRoles.role'],
+      const rels = await this.userRelationRepo
+        .createQueryBuilder('ur')
+        .select('ur.user_id', 'userid')
+        .where('ur.parent_id = :parentId', { parentId: currentId })
+        .getRawMany<{ userid: string }>();
+      const childIds = rels.map((r) => Number(r.userid)).filter((id) => !result.has(id) && id !== userId);
+      if (childIds.length === 0) continue;
+      const users = await this.usersRepository.find({
+        where: { id: In(childIds) },
+        relations: ['userRoles', 'userRoles.role'],
       });
-      for (const rel of relations) {
-        if (rel.user && !result.has(rel.user.id)) {
-          result.set(rel.user.id, this.mapUserDto(rel.user));
-          queue.push(rel.user.id);
+      for (const u of users) {
+        if (!result.has(u.id)) {
+          result.set(u.id, this.mapUserDto(u));
+          queue.push(u.id);
         }
       }
     }
@@ -288,6 +321,22 @@ export class UsersService {
   async findDosenByUnit(unitNama: string): Promise<any[]> {
     const userRoles = await this.userRoleRepo.find({
       where: { role: { name: 'Dosen', unitNama } },
+      relations: ['user', 'user.userRoles', 'user.userRoles.role', 'role'],
+    });
+    const seen = new Set<number>();
+    const result: any[] = [];
+    for (const ur of userRoles) {
+      if (ur.user && !seen.has(ur.user.id)) {
+        seen.add(ur.user.id);
+        result.push(this.mapUserDto(ur.user));
+      }
+    }
+    return result;
+  }
+
+  async findAllDosen(): Promise<any[]> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { role: { name: 'Dosen' } },
       relations: ['user', 'user.userRoles', 'user.userRoles.role', 'role'],
     });
     const seen = new Set<number>();

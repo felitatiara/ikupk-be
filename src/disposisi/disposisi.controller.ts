@@ -1,9 +1,15 @@
 import { Controller, Get, Post, Body, Query, ParseIntPipe } from '@nestjs/common';
 import { DisposisiService } from './disposisi.service';
+import { EventsService } from '../events/events.service';
 
 @Controller('disposisi')
 export class DisposisiController {
-  constructor(private readonly disposisiService: DisposisiService) {}
+  constructor(
+    private readonly disposisiService: DisposisiService,
+    private readonly eventsService: EventsService,
+  ) {}
+
+  // ── Read-only endpoints ───────────────────────────────────────────────────
 
   @Get()
   find(
@@ -27,19 +33,25 @@ export class DisposisiController {
     return { jumlah };
   }
 
+  @Get('chain')
+  getChain(@Query('parentId', ParseIntPipe) parentId: number) {
+    return this.disposisiService.findChain(parentId);
+  }
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
   @Post()
-  upsert(
+  async upsert(
     @Body('indikatorId') indikatorId: number,
     @Body('tahun') tahun: string,
     @Body('items') items: { toUserId: number; jumlahTarget: number }[],
     @Body('fromUserId') fromUserId?: number | null,
     @Body('parentId') parentId?: number | null,
   ) {
-    return this.disposisiService.upsertMultiple(indikatorId, tahun, items, fromUserId, parentId);
-  }
-
-  @Get('chain')
-  getChain(@Query('parentId', ParseIntPipe) parentId: number) {
-    return this.disposisiService.findChain(parentId);
+    const result = await this.disposisiService.upsertMultiple(
+      indikatorId, tahun, items, fromUserId, parentId,
+    );
+    this.eventsService.emit('disposisi', 'updated', indikatorId);
+    return result;
   }
 }

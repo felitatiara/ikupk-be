@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { RequestContextMiddleware } from './common/request-context.middleware';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -29,6 +30,7 @@ import { IntegrationModule } from './integration/integration.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { Notification } from './notifications/notification.entity';
 import { ValidasiBiroPKU } from './monitoring/validasi-biro-pku.entity';
+import { EventsModule } from './events/events.module';
 import jwtConfig from './config/jwt.config';
 
 @Module({
@@ -63,6 +65,7 @@ import jwtConfig from './config/jwt.config';
       }),
     }),
     ScheduleModule.forRoot(),
+    EventsModule,
     UsersModule,
     AuthModule,
     IndikatorModule,
@@ -78,4 +81,8 @@ import jwtConfig from './config/jwt.config';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
+  }
+}

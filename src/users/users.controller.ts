@@ -13,20 +13,22 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { EventsService } from '../events/events.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly eventsService: EventsService,
+  ) {}
+
+  // ── Read-only endpoints ───────────────────────────────────────────────────
 
   @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
+  findAll() { return this.usersService.findAll(); }
 
   @Get('roles')
-  findAllRoles() {
-    return this.usersService.findAllRoles();
-  }
+  findAllRoles() { return this.usersService.findAllRoles(); }
 
   @Get('by-role')
   findByRole(@Query('roleId', ParseIntPipe) roleId: number) {
@@ -36,6 +38,11 @@ export class UsersController {
   @Get('related')
   findRelatedUsers(@Query('userId', ParseIntPipe) userId: number) {
     return this.usersService.findRelatedUsersFor(userId);
+  }
+
+  @Get('debug-relations')
+  debugRelations(@Query('parentId', ParseIntPipe) parentId: number) {
+    return this.usersService.debugRelations(parentId);
   }
 
   @Get('has-related')
@@ -54,6 +61,9 @@ export class UsersController {
     return this.usersService.findDosenByUnit(unitNama);
   }
 
+  @Get('all-dosen')
+  findAllDosen() { return this.usersService.findAllDosen(); }
+
   @Get('by-level')
   findByRoleLevel(@Query('level', ParseIntPipe) level: number) {
     return this.usersService.findByRoleLevel(level);
@@ -64,21 +74,20 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
   @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  async create(@Body() createUserDto: CreateUserDto) {
+    const result = await this.usersService.create(createUserDto);
+    this.eventsService.emit('user', 'created', result.id);
+    return result;
   }
 
   @Post('login')
   async login(@Body() body: { identifier: string; password: string }) {
     const { identifier, password } = body;
-    const result = await this.usersService.validateCredentials(
-      identifier,
-      password,
-    );
+    const result = await this.usersService.validateCredentials(identifier, password);
     if (!result.user) throw new NotFoundException('Invalid credentials');
-    // For now return user (without password)
-    // Strip password before returning
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _p, ...rest } = result.user;
     return rest;
@@ -91,6 +100,7 @@ export class UsersController {
   ) {
     const user = await this.usersService.update(id, updateUserDto);
     if (!user) throw new NotFoundException('User not found');
+    this.eventsService.emit('user', 'updated', id);
     return user;
   }
 
@@ -99,6 +109,7 @@ export class UsersController {
     const user = await this.usersService.findOne(id);
     if (!user) throw new NotFoundException('User not found');
     await this.usersService.remove(id);
+    this.eventsService.emit('user', 'deleted', id);
     return { deleted: true };
   }
 }

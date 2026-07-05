@@ -3,18 +3,20 @@ import {
   Query, Param, Body, ParseIntPipe, HttpCode,
 } from '@nestjs/common';
 import { IndikatorService } from './indikator.service';
+import { EventsService } from '../events/events.service';
 
 @Controller('indikator')
 export class IndikatorController {
-  constructor(private readonly indikatorService: IndikatorService) {}
+  constructor(
+    private readonly indikatorService: IndikatorService,
+    private readonly eventsService: EventsService,
+  ) {}
 
-  /** Daftar tahun yang sudah ada indikatornya — untuk dropdown pilih tahun */
   @Get('years')
   findAvailableYears() {
     return this.indikatorService.findAvailableYears();
   }
 
-  /** Monitoring disposisi bawahan: siapa dapat target apa */
   @Get('monitoring-bawahan')
   getMonitoringBawahan(
     @Query('jenis') jenis: string,
@@ -25,7 +27,6 @@ export class IndikatorController {
     return this.indikatorService.getMonitoringBawahan(jenis, tahun, userId, roleLevel);
   }
 
-  /** Laporan hierarki IKU/PK dengan target + realisasi untuk export Excel */
   @Get('laporan')
   getLaporanWithRealisasi(
     @Query('jenis') jenis: string,
@@ -74,89 +75,14 @@ export class IndikatorController {
     return this.indikatorService.findGroupedForUser(jenis, tahun, userId, roleId);
   }
 
-  /** Bulk import indikator dari hasil parse Excel di frontend */
-  @Post('import-bulk')
-  importBulk(
-    @Body() body: {
-      jenis: string;
-      tahun: string;
-      rows: Array<{
-        kode: string;
-        nama: string;
-        level: number;
-        parentKode: string | null;
-        kategori: string | null;
-        tenggat: string | null;
-        target: number | null;
-        satuan: string | null;
-        sumberData: string;
-      }>;
-    },
-  ) {
-    return this.indikatorService.importBulk(body.jenis, body.tahun, body.rows);
-  }
-
-  /** Copy semua indikator dari tahun lama ke tahun baru */
-  @Post('copy-year')
-  copyFromYear(@Body() body: { fromTahun: string; toTahun: string }) {
-    return this.indikatorService.copyFromYear(body.fromTahun, body.toTahun);
-  }
-
-  /** Daftar indikator IKU level 2 untuk pilihan link PK L3 berbasis IKU */
   @Get('iku-options')
   getIkuOptions(@Query('tahun') tahun: string) {
     return this.indikatorService.getIkuOptions(tahun);
   }
 
-  @Post()
-  create(
-    @Body() data: {
-      jenis: string;
-      kode: string;
-      nama: string;
-      tahun: string;
-      level: number;
-      parentId?: number | null;
-      jenisData?: string | null;
-      sumberData?: string;
-      linkedIkuId?: number | null;
-      kategori?: string | null;
-    },
-  ) {
-    return this.indikatorService.create(data);
-  }
-
-  @Put(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() data: {
-      jenis?: string;
-      kode?: string;
-      nama?: string;
-      tahun?: string;
-      level?: number;
-      parentId?: number | null;
-      jenisData?: string | null;
-      sumberData?: string;
-      linkedIkuId?: number | null;
-      kategori?: string | null;
-    },
-  ) {
-    return this.indikatorService.update(id, data);
-  }
-
-  /** Hapus semua indikator — jika ?tahun= diberikan, hanya hapus tahun itu */
   @Get(':id/cascade-chain')
   getCascadeChain(@Param('id', ParseIntPipe) id: number) {
     return this.indikatorService.getCascadeChain(id);
-  }
-
-  @Post(':id/cascade-chain')
-  saveCascadeChain(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: { chain: (number | number[])[] },
-  ) {
-    return this.indikatorService.saveCascadeChain(id, body.chain);
   }
 
   @Get(':id')
@@ -164,14 +90,79 @@ export class IndikatorController {
     return this.indikatorService.findOne(id);
   }
 
+  // ── Mutations — emit SSE event after each successful write ────────────────
+
+  @Post()
+  async create(
+    @Body() data: {
+      jenis: string; kode: string; nama: string; tahun: string; level: number;
+      parentId?: number | null; jenisData?: string | null; sumberData?: string;
+      linkedIkuId?: number | null; kategori?: string | null;
+    },
+  ) {
+    const result = await this.indikatorService.create(data);
+    this.eventsService.emit('indikator', 'created', result.id);
+    return result;
+  }
+
+  @Put(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: {
+      jenis?: string; kode?: string; nama?: string; tahun?: string; level?: number;
+      parentId?: number | null; jenisData?: string | null; sumberData?: string;
+      linkedIkuId?: number | null; kategori?: string | null;
+    },
+  ) {
+    const result = await this.indikatorService.update(id, data);
+    this.eventsService.emit('indikator', 'updated', id);
+    return result;
+  }
+
+  @Post(':id/cascade-chain')
+  async saveCascadeChain(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { chain: (number | number[])[] },
+  ) {
+    const result = await this.indikatorService.saveCascadeChain(id, body.chain);
+    this.eventsService.emit('cascade', 'updated', id);
+    return result;
+  }
+
+  @Post('import-bulk')
+  async importBulk(
+    @Body() body: {
+      jenis: string; tahun: string;
+      rows: Array<{
+        kode: string; nama: string; level: number; parentKode: string | null;
+        kategori: string | null; tenggat: string | null; target: number | null;
+        satuan: string | null; sumberData: string;
+      }>;
+    },
+  ) {
+    const result = await this.indikatorService.importBulk(body.jenis, body.tahun, body.rows);
+    this.eventsService.emit('indikator', 'bulk');
+    return result;
+  }
+
+  @Post('copy-year')
+  async copyFromYear(@Body() body: { fromTahun: string; toTahun: string }) {
+    const result = await this.indikatorService.copyFromYear(body.fromTahun, body.toTahun);
+    this.eventsService.emit('indikator', 'bulk', undefined, { toTahun: body.toTahun });
+    return result;
+  }
+
   @Delete('all')
   @HttpCode(204)
-  removeAll(@Query('tahun') tahun?: string) {
-    return this.indikatorService.removeAll(tahun);
+  async removeAll(@Query('tahun') tahun?: string) {
+    await this.indikatorService.removeAll(tahun);
+    this.eventsService.emit('indikator', 'bulk', undefined, { tahun });
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.indikatorService.remove(id);
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    const result = await this.indikatorService.remove(id);
+    this.eventsService.emit('indikator', 'deleted', id);
+    return result;
   }
 }

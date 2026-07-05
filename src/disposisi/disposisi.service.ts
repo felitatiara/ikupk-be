@@ -38,7 +38,12 @@ export class DisposisiService {
     const received = await this.disposisiRepo.find({
       where: { toUserId, indikatorId, tahun },
     });
-    return received.reduce((sum, d) => sum + Number(d.jumlahTarget), 0);
+    if (received.length === 0) return 0;
+    // Prefer explicit disposisi (fromUserId != null) over auto-cascade (fromUserId = null)
+    // to avoid double-counting when both exist for the same indikator.
+    const explicit = received.filter((d) => d.fromUserId !== null);
+    const toUse = explicit.length > 0 ? explicit : received;
+    return Math.max(...toUse.map((d) => Number(d.jumlahTarget)));
   }
 
   /**

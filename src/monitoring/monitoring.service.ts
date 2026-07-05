@@ -231,6 +231,13 @@ export class MonitoringService {
             ? Math.min(100, Math.floor((effectiveRealisasi / sumTargetFak) * 100))
             : 0;
 
+      const actualProgress =
+        targetAbsolut != null && targetAbsolut > 0
+          ? Math.floor((effectiveRealisasi / targetAbsolut) * 100)
+          : sumTargetFak > 0
+            ? Math.floor((effectiveRealisasi / sumTargetFak) * 100)
+            : 0;
+
       // Build per-L1 sub-indikator data (with L2 children)
       const subIndikators: any[] = [];
       for (const l1 of level1Children) {
@@ -315,6 +322,7 @@ export class MonitoringService {
         tenggat: uniTarget?.tenggat || '-',
         status: tercapai ? 'Done' : 'Proses',
         progress,
+        actualProgress,
         chartProgress: progress > 0 ? progress : Math.min(100, effectiveRealisasi),
         subIndikators,
       });

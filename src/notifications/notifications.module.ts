@@ -5,6 +5,7 @@ import { TargetUniversitas } from '../target/target.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { UserRole } from '../roles/user-role.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
 
@@ -16,6 +17,7 @@ import { NotificationsController } from './notifications.controller';
       TargetUnit,
       Indikator,
       UserRole,
+      Disposisi,
     ]),
   ],
   providers: [NotificationsService],

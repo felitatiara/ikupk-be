@@ -15,6 +15,11 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
+  @Get('upcoming-deadlines')
+  getUpcomingDeadlines(@Req() req: any) {
+    return this.service.getUpcomingDeadlines(req.user.userId);
+  }
+
   @Get()
   getMyNotifications(@Req() req: any) {
     return this.service.getForUser(req.user.userId);

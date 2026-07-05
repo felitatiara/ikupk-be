@@ -1,10 +1,14 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, ParseIntPipe } from '@nestjs/common';
 import { BaselineDataService } from './baseline_data.service';
 import { BaselineData } from './baseline_data.entity';
+import { EventsService } from '../events/events.service';
 
 @Controller('baseline-data')
 export class BaselineDataController {
-  constructor(private readonly baselineDataService: BaselineDataService) {}
+  constructor(
+    private readonly baselineDataService: BaselineDataService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   @Get()
   findAll(
@@ -17,28 +21,37 @@ export class BaselineDataController {
     return this.baselineDataService.findAll(tahun);
   }
 
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
   @Post('upsert')
-  upsert(
+  async upsert(
     @Body() body: { jenisData: string; tahun: string; jumlah: number; keterangan?: string },
   ) {
-    return this.baselineDataService.upsert(body);
+    const result = await this.baselineDataService.upsert(body);
+    this.eventsService.emit('baseline', 'updated');
+    return result;
   }
 
   @Post()
-  create(@Body() data: Partial<BaselineData>): Promise<BaselineData> {
-    return this.baselineDataService.create(data);
+  async create(@Body() data: Partial<BaselineData>): Promise<BaselineData> {
+    const result = await this.baselineDataService.create(data);
+    this.eventsService.emit('baseline', 'created', result.id);
+    return result;
   }
 
   @Put(':id')
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: Partial<BaselineData>,
   ): Promise<BaselineData | null> {
-    return this.baselineDataService.update(id, data);
+    const result = await this.baselineDataService.update(id, data);
+    this.eventsService.emit('baseline', 'updated', id);
+    return result;
   }
 
   @Delete(':id')
-  delete(@Param('id', ParseIntPipe) id: number): Promise<void> {
-    return this.baselineDataService.delete(id);
+  async delete(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    await this.baselineDataService.delete(id);
+    this.eventsService.emit('baseline', 'deleted', id);
   }
 }
