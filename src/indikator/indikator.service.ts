@@ -96,11 +96,184 @@ export class IndikatorService {
   async saveCascadeChain(
     id: number,
     chain: (number | number[])[],
+    tahun?: string,
+    skipMaterialize = false,
   ): Promise<{ success: boolean }> {
     await this.indikatorRepository.update(id, {
-      cascadeChain: JSON.stringify(chain),
+      cascadeChain: chain.length > 0 ? JSON.stringify(chain) : null,
     });
+    if (chain.length > 0 && !skipMaterialize) {
+      await this.materializeCascadeDisposisi(id, chain, false, tahun);
+    }
     return { success: true };
+  }
+
+  private async getSubtreeIds(l1Id: number): Promise<number[]> {
+    const result: number[] = [l1Id];
+    let current = [l1Id];
+    while (current.length > 0) {
+      const children = await this.indikatorRepository.find({
+        where: { parentId: In(current) },
+        select: ['id'],
+      });
+      const childIds = children.map((c) => c.id);
+      if (childIds.length === 0) break;
+      result.push(...childIds);
+      current = childIds;
+    }
+    return result;
+  }
+
+  async materializeCascadeDisposisi(
+    l1Id: number,
+    chain: (number | number[])[],
+    onlyNewYears = false,
+    targetTahun?: string,
+  ): Promise<void> {
+    const subtreeIds = await this.getSubtreeIds(l1Id);
+
+    // Normalize chain: each step = array of role IDs
+    const steps: number[][] = chain
+      .map((step) =>
+        Array.isArray(step) ? (step as unknown[]).map(Number) : [Number(step)],
+      )
+      .filter((s) => s.length > 0);
+
+    if (steps.length === 0) return;
+
+    // Find years with targets for this subtree (filtered to targetTahun if provided)
+    const existingTargets = await this.targetUniRepo.find({
+      where: targetTahun
+        ? { indikatorId: In(subtreeIds), tahun: targetTahun }
+        : { indikatorId: In(subtreeIds) },
+    });
+    if (existingTargets.length === 0) return;
+
+    const tahunSet = new Set(existingTargets.map((t) => t.tahun));
+    const targetByKey = new Map<string, number>(
+      existingTargets.map((t) => [
+        `${t.indikatorId}:${t.tahun}`,
+        Number(t.persentase ?? 0),
+      ]),
+    );
+
+    // Resolve users per step (by role IDs)
+    const stepUserIds: number[][] = [];
+    for (const roleIds of steps) {
+      const urs = await this.userRoleRepo.find({
+        where: { roleId: In(roleIds) },
+      });
+      const seen = new Set<number>();
+      const uids: number[] = [];
+      for (const ur of urs) {
+        if (!seen.has(ur.userId)) {
+          seen.add(ur.userId);
+          uids.push(ur.userId);
+        }
+      }
+      stepUserIds.push(uids);
+    }
+
+    const allChainUserIds = [...new Set(stepUserIds.flat())];
+    if (allChainUserIds.length === 0) return;
+
+    // Load supervisor relationships for chain users
+    const relations = await this.userRelationRepo.find({
+      where: { userId: In(allChainUserIds) },
+    });
+    const parentsByUser = new Map<number, Set<number>>();
+    for (const rel of relations) {
+      if (!parentsByUser.has(rel.userId))
+        parentsByUser.set(rel.userId, new Set());
+      parentsByUser.get(rel.userId)!.add(rel.parentId);
+    }
+
+    for (const tahun of tahunSet) {
+      // When called from importBulk, skip years that already have disposisi
+      // so manual re-disposisi adjustments made by supervisors are preserved.
+      if (onlyNewYears) {
+        const existing = await this.disposisiRepo.findOne({
+          where: {
+            indikatorId: In(subtreeIds),
+            tahun,
+            toUserId: In(allChainUserIds),
+          },
+        });
+        if (existing) continue;
+      }
+
+      // Delete existing disposisi for chain users in this subtree+tahun
+      await this.disposisiRepo
+        .createQueryBuilder()
+        .delete()
+        .where('indikator_id IN (:...ids)', { ids: subtreeIds })
+        .andWhere('tahun = :tahun', { tahun })
+        .andWhere('to_user_id IN (:...userIds)', {
+          userIds: allChainUserIds,
+        })
+        .execute();
+
+      // Track created IDs for parentId linking: `${userId}:${indikatorId}` → saved id
+      const createdIds = new Map<string, number>();
+
+      for (let si = 0; si < steps.length; si++) {
+        const users = stepUserIds[si];
+        const prevSet =
+          si > 0 ? new Set(stepUserIds[si - 1]) : new Set<number>();
+
+        const toCreate: Partial<Disposisi>[] = [];
+        const toCreateMeta: {
+          userId: number;
+          indikatorId: number;
+        }[] = [];
+
+        for (const userId of users) {
+          let fromUserId: number | null = null;
+          if (si > 0) {
+            const userParents = parentsByUser.get(userId) ?? new Set<number>();
+            for (const p of userParents) {
+              if (prevSet.has(p)) {
+                fromUserId = p;
+                break;
+              }
+            }
+          }
+
+          for (const indikatorId of subtreeIds) {
+            const jumlahTarget =
+              targetByKey.get(`${indikatorId}:${tahun}`) ?? 0;
+            if (jumlahTarget <= 0) continue;
+
+            const parentId =
+              fromUserId !== null
+                ? (createdIds.get(`${fromUserId}:${indikatorId}`) ?? null)
+                : null;
+
+            toCreate.push({
+              indikatorId,
+              tahun,
+              fromUserId,
+              toUserId: userId,
+              jumlahTarget,
+              parentId,
+              status: 'diterima',
+            });
+            toCreateMeta.push({ userId, indikatorId });
+          }
+        }
+
+        if (toCreate.length === 0) continue;
+
+        const saved = await this.disposisiRepo.save(
+          toCreate.map((e) => this.disposisiRepo.create(e)),
+        );
+
+        for (let i = 0; i < saved.length; i++) {
+          const { userId, indikatorId } = toCreateMeta[i];
+          createdIds.set(`${userId}:${indikatorId}`, saved[i].id);
+        }
+      }
+    }
   }
 
   async update(
@@ -287,6 +460,23 @@ export class IndikatorService {
         }
       } catch (err: any) {
         errors.push(`Baris kode=${row.kode}: ${err?.message ?? 'Unknown error'}`);
+      }
+    }
+
+    // Re-materialize cascade disposisi for any L1 in this import that has a chain set
+    const importedIds = [...kodeToId.values()];
+    if (importedIds.length > 0) {
+      const l1WithChain = await this.indikatorRepository.find({
+        where: { id: In(importedIds), level: 1 },
+      });
+      for (const l1 of l1WithChain) {
+        if (!l1.cascadeChain) continue;
+        try {
+          const chain = JSON.parse(l1.cascadeChain) as (number | number[])[];
+          await this.materializeCascadeDisposisi(l1.id, chain, true);
+        } catch {
+          /* skip malformed chain */
+        }
       }
     }
 

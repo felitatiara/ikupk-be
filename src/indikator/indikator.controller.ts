@@ -122,9 +122,9 @@ export class IndikatorController {
   @Post(':id/cascade-chain')
   async saveCascadeChain(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { chain: (number | number[])[] },
+    @Body() body: { chain: (number | number[])[]; tahun?: string; skipMaterialize?: boolean },
   ) {
-    const result = await this.indikatorService.saveCascadeChain(id, body.chain);
+    const result = await this.indikatorService.saveCascadeChain(id, body.chain, body.tahun, body.skipMaterialize);
     this.eventsService.emit('cascade', 'updated', id);
     return result;
   }
