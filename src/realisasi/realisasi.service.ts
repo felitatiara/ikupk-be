@@ -10,6 +10,7 @@ import { TargetUnit } from '../target/target-unit.entity';
 import { UserRelation } from '../users/user_relation.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { UserRole } from '../roles/user-role.entity';
+import { SkpPenilaiConfig } from '../skp-penilai/skp-penilai.entity';
 
 @Injectable()
 export class RealisasiService {
@@ -28,6 +29,8 @@ export class RealisasiService {
     private readonly indikatorRepository: Repository<Indikator>,
     @InjectRepository(UserRole)
     private readonly userRoleRepository: Repository<UserRole>,
+    @InjectRepository(SkpPenilaiConfig)
+    private readonly skpPenilaiRepo: Repository<SkpPenilaiConfig>,
   ) {}
 
   async findAll(): Promise<Realisasi[]> {
@@ -299,29 +302,14 @@ export class RealisasiService {
       ? 'rejected'
       : 'pending';
 
-    // Cek role user ini
+    // Cari role utama user ini
     const myUserRole = await this.userRoleRepository.findOne({
       where: { userId, isPrimary: true },
       relations: ['role'],
     });
-    const myRoleName = (myUserRole?.role?.name ?? '').toLowerCase();
-    const isWD1 =
-      myRoleName.includes('wakil dekan 1') ||
-      myRoleName.includes('wd1') ||
-      myRoleName.includes('wakil dekan bidang akademik');
+    const myRoleId = myUserRole?.roleId ?? null;
 
-    // Cari WD1 (Pejabat Penilai Kinerja) dan Dekan (Atasan Pejabat Penilai Kinerja)
-    const wd1Row = await this.userRoleRepository
-      .createQueryBuilder('ur')
-      .innerJoinAndSelect('ur.user', 'u')
-      .innerJoinAndSelect('ur.role', 'r')
-      .where('ur.isPrimary = true')
-      .andWhere(
-        "LOWER(r.name) LIKE :n1 OR LOWER(r.name) LIKE :n2 OR LOWER(r.name) LIKE :n3",
-        { n1: '%wakil dekan 1%', n2: '%wd1%', n3: '%wakil dekan bidang akademik%' },
-      )
-      .getOne();
-
+    // Cari Dekan (selalu dipakai sebagai Atasan Pejabat Penilai / Pihak Kedua Rencana SKP)
     const dekanRow = await this.userRoleRepository
       .createQueryBuilder('ur')
       .innerJoinAndSelect('ur.user', 'u')
@@ -333,21 +321,47 @@ export class RealisasiService {
     let penilai: { nama: string; nip: string | null } | null = null;
     let atasanPenilai: { nama: string; nip: string | null } | null = null;
 
-    if (isWD1) {
-      // Penilai WD1 adalah Dekan (sebagai Atasan Pejabat Penilai Kinerja)
-      penilai = dekanRow?.user
-        ? { nama: dekanRow.user.nama, nip: (dekanRow.user as any).nip ?? null }
-        : null;
-      atasanPenilai = null;
-    } else {
-      // Pejabat Penilai Kinerja untuk dosen/tendik adalah WD1
+    // Ambil config dari master (admin-set) — dua field terpisah
+    if (myRoleId) {
+      const config = await this.skpPenilaiRepo.findOne({
+        where: { roleId: myRoleId },
+        relations: ['pihakKeduaUser', 'penilaiUser'],
+      });
+
+      // Pihak Kedua Rencana SKP (atasanPenilai dalam response)
+      if (config?.pihakKeduaUser) {
+        atasanPenilai = { nama: config.pihakKeduaUser.nama, nip: config.pihakKeduaUser.nip ?? null };
+      }
+
+      // Pejabat Penilai Kinerja EKP (penilai dalam response)
+      if (config?.penilaiUser) {
+        penilai = { nama: config.penilaiUser.nama, nip: config.penilaiUser.nip ?? null };
+      }
+    }
+
+    // Fallback Pejabat Penilai → WD1 jika belum dikonfigurasi
+    if (!penilai) {
+      const wd1Row = await this.userRoleRepository
+        .createQueryBuilder('ur')
+        .innerJoinAndSelect('ur.user', 'u')
+        .innerJoinAndSelect('ur.role', 'r')
+        .where('ur.isPrimary = true')
+        .andWhere(
+          "LOWER(r.name) LIKE :n1 OR LOWER(r.name) LIKE :n2 OR LOWER(r.name) LIKE :n3",
+          { n1: '%wakil dekan 1%', n2: '%wd1%', n3: '%wakil dekan bidang akademik%' },
+        )
+        .getOne();
       penilai = wd1Row?.user
-        ? { nama: wd1Row.user.nama, nip: (wd1Row.user as any).nip ?? null }
+        ? { nama: wd1Row.user.nama, nip: wd1Row.user.nip ?? null }
         : null;
-      // Atasan Pejabat Penilai Kinerja adalah Dekan
-      atasanPenilai = dekanRow?.user
-        ? { nama: dekanRow.user.nama, nip: (dekanRow.user as any).nip ?? null }
-        : null;
+    }
+
+    // Fallback Pihak Kedua Rencana SKP → Dekan jika belum dikonfigurasi
+    if (!atasanPenilai) {
+      const dekanUser = dekanRow?.user ?? null;
+      if (dekanUser) {
+        atasanPenilai = { nama: dekanUser.nama, nip: dekanUser.nip ?? null };
+      }
     }
 
     return {

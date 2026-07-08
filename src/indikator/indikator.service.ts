@@ -968,6 +968,22 @@ export class IndikatorService {
         // Use the larger of: formal realisasi submission vs raw file count
         realisasiMap.set(id, Math.max(realisasiMap.get(id) ?? 0, count));
       }
+
+      // Include bawahan's uploaded files (recipients of disposisi sent by current user)
+      // so monitoring capaian matches "Lihat Progress" which shows own + bawahan together.
+      const sentDisposisis = await this.disposisiRepo.find({
+        where: { fromUserId: userId, indikatorId: In(indikatorIds), tahun },
+      });
+      const bawahanUserIds = [...new Set(sentDisposisis.map((d) => d.toUserId))];
+      if (bawahanUserIds.length > 0) {
+        const bawahanFiles = await this.realisasiFileRepo.find({
+          where: { indikatorId: In(indikatorIds), createdBy: In(bawahanUserIds), tahun },
+        });
+        for (const f of bawahanFiles) {
+          if (f.indikatorId === null) continue;
+          realisasiMap.set(f.indikatorId, (realisasiMap.get(f.indikatorId) ?? 0) + 1);
+        }
+      }
     }
 
     for (const group of filtered) {
