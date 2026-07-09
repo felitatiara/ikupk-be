@@ -596,6 +596,26 @@ export class IndikatorService {
                 all,
               );
 
+              // Sum disposisi at the leaf level (recipients who do NOT further distribute).
+              // Uses a NOT-IN subquery to exclude intermediate nodes (kajur, kaprodi, etc.)
+              // so each mahasiswa's share is counted exactly once.
+              const leafSumRows = await this.disposisiRepo.query(
+                `SELECT COALESCE(SUM(d.jumlah_target), 0) AS total
+                 FROM disposisi d
+                 WHERE d.indikator_id = $1 AND d.tahun = $2
+                   AND d.to_user_id NOT IN (
+                     SELECT COALESCE(from_user_id, 0)
+                     FROM disposisi
+                     WHERE indikator_id = $1 AND tahun = $2
+                       AND from_user_id IS NOT NULL
+                   )`,
+                [l2.id, tahun],
+              );
+              const leafDisposisiJumlah =
+                Number(leafSumRows?.[0]?.total ?? 0) > 0
+                  ? Number(leafSumRows[0].total)
+                  : null;
+
               return {
                 id: l2.id,
                 kode: l2.kode,
@@ -606,6 +626,7 @@ export class IndikatorService {
                 nilaiTarget: childNilaiTarget,
                 satuan: childSatuan,
                 baselineJumlah: childBaseline,
+                disposisiJumlah: leafDisposisiJumlah,
                 sumberData: String(l2.sumberData || 'repository'),
                 children: await Promise.all(
                   level3.map(async (l3) => {
@@ -716,8 +737,10 @@ export class IndikatorService {
     // Terima disposisi dari siapapun yang levelnya lebih tinggi di hierarki.
     // Karena Dekan dan Wakil Dekan sama-sama level 1, Dekan → Wadek
     // diterima via kondisi: fromLevel <= currentRoleLevel && fromLevel <= 1.
+    // fromUserId === null berarti distribusi dari Admin/sistem — selalu diterima.
     const receivedFromOthers = disposisis.filter((d) => {
-      if (d.fromUserId === null || d.fromUserId === userId) return false;
+      if (d.fromUserId === userId) return false;
+      if (d.fromUserId === null) return true; // Admin/sistem distribusi selalu valid
       const fromLevel = fromUserLevelMap.get(d.fromUserId) ?? 99;
       // Sama level hanya diizinkan di level 0–1 (Dekan/Wadek satu rumpun)
       if (fromLevel === currentRoleLevel) return currentRoleLevel <= 1;
@@ -726,7 +749,7 @@ export class IndikatorService {
     // Track level pengirim per indikator untuk ambil yang paling langsung (level tertinggi = angka terkecil)
     const senderLevelByIndikator = new Map<number, number>();
     for (const d of receivedFromOthers) {
-      const fromLevel = fromUserLevelMap.get(d.fromUserId ?? 0) ?? 99;
+      const fromLevel = d.fromUserId === null ? -1 : (fromUserLevelMap.get(d.fromUserId) ?? 99);
       const existingLevel = senderLevelByIndikator.get(d.indikatorId) ?? 99;
       // Pakai nilai dari pengirim paling langsung (level paling rendah angkanya)
       if (fromLevel <= existingLevel) {
@@ -759,17 +782,35 @@ export class IndikatorService {
     }
 
     const cascadedL1Ids = new Set<number>();
+    // Which L1 indicators have this user as the FIRST node in the cascade chain.
+    // First-node users (e.g. Wakil Dekan) receive directly from admin/dekan so they
+    // need nilaiTarget shown as a reference even before import creates a real disposisi.
+    const firstNodeL1Ids = new Set<number>();
     for (const ind of allInds) {
       if (!ind.cascadeChain || ind.level !== 1) continue;
       try {
         const chain = JSON.parse(ind.cascadeChain) as unknown[];
-        if (isRoleInChain(chain, Number(roleId))) cascadedL1Ids.add(ind.id);
+        if (!isRoleInChain(chain, Number(roleId))) continue;
+        cascadedL1Ids.add(ind.id);
+        // Check if this user's role is at chain[0] (first step)
+        if (chain.length > 0) {
+          const firstStep = chain[0];
+          const firstIds = (Array.isArray(firstStep)
+            ? (firstStep as unknown[]).map(Number)
+            : [Number(firstStep)]);
+          if (firstIds.includes(Number(roleId))) firstNodeL1Ids.add(ind.id);
+        }
       } catch {
         /* skip malformed chain */
       }
     }
 
     const fullGrouped = await this.findGrouped(jenis, tahun, roleId);
+
+    // Tracks IDs added by cascade scope without a real disposisi record.
+    // These will surface as disposisiJumlah = null (shown as "-") in the response,
+    // UNLESS the user is the first node in the chain (they see nilaiTarget as reference).
+    const cascadeFallbackIds = new Set<number>();
 
     if (cascadedL1Ids.size > 0) {
       type CascadeLeaf = {
@@ -785,18 +826,27 @@ export class IndikatorService {
       for (const group of typedGrouped) {
         for (const sub of group.subIndikators) {
           if (!cascadedL1Ids.has(sub.id)) continue;
-          // Cascade L2 children — nilaiTarget berisi fallback dari target_universitas
+          const isFirstNode = firstNodeL1Ids.has(sub.id);
           for (const child of sub.children ?? []) {
-            if (
-              !disposisiByIndikator.has(child.id) &&
-              child.nilaiTarget != null
-            ) {
-              disposisiByIndikator.set(child.id, Number(child.nilaiTarget));
+            if (!disposisiByIndikator.has(child.id)) {
+              if (isFirstNode && child.nilaiTarget != null) {
+                // First node (e.g. WD): show nilaiTarget as reference allocation
+                disposisiByIndikator.set(child.id, Number(child.nilaiTarget));
+              } else {
+                // Deeper nodes: show "-" until atasan creates a real disposisi
+                disposisiByIndikator.set(child.id, 0);
+                cascadeFallbackIds.add(child.id);
+              }
             }
             // Cascade ke L3 grandchildren (PK)
             for (const gc of child.children ?? []) {
-              if (!disposisiByIndikator.has(gc.id) && gc.nilaiTarget != null) {
-                disposisiByIndikator.set(gc.id, Number(gc.nilaiTarget));
+              if (!disposisiByIndikator.has(gc.id)) {
+                if (isFirstNode && gc.nilaiTarget != null) {
+                  disposisiByIndikator.set(gc.id, Number(gc.nilaiTarget));
+                } else {
+                  disposisiByIndikator.set(gc.id, 0);
+                  cascadeFallbackIds.add(gc.id);
+                }
               }
             }
           }
@@ -810,6 +860,10 @@ export class IndikatorService {
         }
       }
     }
+
+    // Helper: returns null for cascade-scope-only entries (no real disposisi yet)
+    const resolveDisposisi = (id: number): number | null =>
+      cascadeFallbackIds.has(id) ? null : (disposisiByIndikator.get(id) ?? null);
 
     if (disposisiByIndikator.size === 0) return [];
 
@@ -870,17 +924,17 @@ export class IndikatorService {
               .filter((gc: any) => assignedIndikatorIds.has(gc.id))
               .map((gc: any) => ({
                 ...gc,
-                disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+                disposisiJumlah: resolveDisposisi(gc.id),
               }));
 
             if (isChildAssigned) {
               const enrichedGrandchildren = (c.children ?? []).map((gc: any) => ({
                 ...gc,
-                disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+                disposisiJumlah: resolveDisposisi(gc.id),
               }));
               return {
                 ...c,
-                disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+                disposisiJumlah: resolveDisposisi(c.id),
                 children: enrichedGrandchildren,
               };
             } else if (filteredGrandchildren.length > 0) {
@@ -894,15 +948,15 @@ export class IndikatorService {
           // Enrich all L2 children and L3 grandchildren with disposisiJumlah from cascade map
           const enrichedChildren = (sub.children ?? []).map((c: any) => ({
             ...c,
-            disposisiJumlah: disposisiByIndikator.get(c.id) ?? null,
+            disposisiJumlah: resolveDisposisi(c.id),
             children: (c.children ?? []).map((gc: any) => ({
               ...gc,
-              disposisiJumlah: disposisiByIndikator.get(gc.id) ?? null,
+              disposisiJumlah: resolveDisposisi(gc.id),
             })),
           }));
           filteredSubs.push({
             ...sub,
-            disposisiJumlah: disposisiByIndikator.get(sub.id) ?? null,
+            disposisiJumlah: resolveDisposisi(sub.id),
             children: enrichedChildren,
           });
         } else if (filteredChildren.length > 0) {
@@ -1315,6 +1369,23 @@ export class IndikatorService {
         if (row)
           row.disposisiByUser[d.toUserId] =
             (row.disposisiByUser[d.toUserId] ?? 0) + Number(d.jumlahTarget);
+      }
+    }
+
+    // 3b. Override nilaiTarget dengan total disposisi yang diterima bawahan tertinggi
+    // (level role paling rendah = paling senior, misal Kajur untuk WD).
+    // Ini membuat kolom Target mencerminkan data import, bukan target universitas statis.
+    if (bawahanList.length > 0) {
+      const minLevel = Math.min(...bawahanList.map((b) => b.roleLevel));
+      const topIds = new Set(
+        bawahanList.filter((b) => b.roleLevel === minLevel).map((b) => b.id),
+      );
+      for (const row of leafRows) {
+        const topTotal = [...topIds].reduce(
+          (sum, uid) => sum + (row.disposisiByUser[uid] ?? 0),
+          0,
+        );
+        if (topTotal > 0) row.nilaiTarget = topTotal;
       }
     }
 
