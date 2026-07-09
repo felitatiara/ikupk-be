@@ -37,6 +37,14 @@ export class SkpPenilaiConfig {
   @JoinColumn({ name: 'pihak_kedua_user_id' })
   pihakKeduaUser: User | null;
 
+  /** Checker — memvalidasi Rencana SKP sebelum Pihak Kedua menandatangani */
+  @Column({ name: 'checker_user_id', nullable: true, default: null })
+  checkerUserId: number | null;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', eager: false, nullable: true })
+  @JoinColumn({ name: 'checker_user_id' })
+  checkerUser: User | null;
+
   /** Pejabat Penilai Kinerja untuk Formulir EKP */
   @Column({ name: 'penilai_user_id', nullable: true, default: null })
   penilaiUserId: number | null;

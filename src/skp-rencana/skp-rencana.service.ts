@@ -12,27 +12,65 @@ export class SkpRencanaService {
 
   async getStatus(userId: number, tahun: string) {
     const record = await this.repo.findOne({ where: { userId, tahun } });
-    return record ?? { userId, tahun, status: 'draft', signaturePegawai: null, signaturePihakKedua: null, signedAtPegawai: null, signedAtPihakKedua: null };
+    if (!record) {
+      return { userId, tahun, status: 'draft', signaturePegawai: null, signatureChecker: null, signaturePihakKedua: null, signedAtPegawai: null, checkedAt: null, signedAtPihakKedua: null };
+    }
+    // Normalize legacy status values from old code
+    if (record.status === 'disetujui_pegawai') record.status = 'signed_pegawai';
+    else if (record.status === 'tervalidasi_atasan') record.status = 'checked';
+    return record;
   }
 
-  /** Pegawai menyetujui target (tanpa TTD) — draft → disetujui_pegawai */
-  async setujuByPegawai(userId: number, tahun: string) {
+  /** Pegawai menandatangani Rencana SKP — draft → signed_pegawai */
+  async signByPegawai(userId: number, tahun: string, signature: string | null) {
     const existing = await this.repo.findOne({ where: { userId, tahun } });
     if (existing) {
-      await this.repo.update(existing.id, { status: 'disetujui_pegawai', signedAtPegawai: new Date() });
+      await this.repo.update(existing.id, {
+        status: 'signed_pegawai',
+        signaturePegawai: signature ?? null,
+        signedAtPegawai: new Date(),
+      });
     } else {
-      await this.repo.save(this.repo.create({ userId, tahun, status: 'disetujui_pegawai', signedAtPegawai: new Date() }));
+      await this.repo.save(this.repo.create({
+        userId, tahun,
+        status: 'signed_pegawai',
+        signaturePegawai: signature ?? null,
+        signedAtPegawai: new Date(),
+      }));
     }
     return this.getStatus(userId, tahun);
   }
 
-  /** Atasan langsung memvalidasi rencana SKP bawahan — disetujui_pegawai → tervalidasi_atasan */
+  /** Checker memvalidasi Rencana SKP bawahan — signed_pegawai → checked */
+  async checkByChecker(targetUserId: number, tahun: string, signature: string | null) {
+    const existing = await this.repo.findOne({ where: { userId: targetUserId, tahun } });
+    if (existing) {
+      await this.repo.update(existing.id, {
+        status: 'checked',
+        signatureChecker: signature ?? null,
+        checkedAt: new Date(),
+      });
+    } else {
+      await this.repo.save(this.repo.create({
+        userId: targetUserId, tahun, status: 'checked',
+        signatureChecker: signature ?? null, checkedAt: new Date(),
+      }));
+    }
+    return this.getStatus(targetUserId, tahun);
+  }
+
+  /** Pegawai menyetujui target (tanpa TTD) — alias ke signByPegawai tanpa signature */
+  async setujuByPegawai(userId: number, tahun: string) {
+    return this.signByPegawai(userId, tahun, null);
+  }
+
+  /** Atasan langsung memvalidasi rencana SKP bawahan — signed_pegawai → signed_pihak_kedua (tanpa TTD) */
   async validasiByAtasan(targetUserId: number, tahun: string) {
     const existing = await this.repo.findOne({ where: { userId: targetUserId, tahun } });
     if (existing) {
-      await this.repo.update(existing.id, { status: 'tervalidasi_atasan' });
+      await this.repo.update(existing.id, { status: 'signed_pihak_kedua', signedAtPihakKedua: new Date() });
     } else {
-      await this.repo.save(this.repo.create({ userId: targetUserId, tahun, status: 'tervalidasi_atasan' }));
+      await this.repo.save(this.repo.create({ userId: targetUserId, tahun, status: 'signed_pihak_kedua', signedAtPihakKedua: new Date() }));
     }
     return this.getStatus(targetUserId, tahun);
   }

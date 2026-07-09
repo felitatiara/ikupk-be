@@ -49,6 +49,21 @@ export class MonitoringController {
     return this.monitoringService.upsertValidasiBiroPKU(body);
   }
 
+  @Post('validasi-biro-pku/bulk')
+  async bulkUpsertValidasiBiroPKU(
+    @Body() body: { items: { indikatorId: number; tahun: string; jumlahValid: number | null; keterangan?: string; inputBy?: number }[] },
+  ) {
+    return this.monitoringService.bulkUpsertValidasiBiroPKU(body.items);
+  }
+
+  @Get('realisasi-counts')
+  async getRealisasiCounts(
+    @Query('jenis') jenis: string,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.monitoringService.getRealisasiCounts(jenis, tahun);
+  }
+
   @Get('scope')
   async getScopeForUser(
     @Query('userId', ParseIntPipe) userId: number,

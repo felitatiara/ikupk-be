@@ -27,18 +27,24 @@ export class SkpRencanaStatus {
   @Column({ type: 'varchar', length: 4 })
   tahun: string;
 
-  /** draft → signed_pegawai → signed_pihak_kedua */
+  /** draft → signed_pegawai → checked → signed_pihak_kedua */
   @Column({ type: 'varchar', length: 30, default: 'draft' })
   status: string;
 
   @Column({ name: 'signature_pegawai', type: 'text', nullable: true })
   signaturePegawai: string | null;
 
+  @Column({ name: 'signature_checker', type: 'text', nullable: true })
+  signatureChecker: string | null;
+
   @Column({ name: 'signature_pihak_kedua', type: 'text', nullable: true })
   signaturePihakKedua: string | null;
 
   @Column({ name: 'signed_at_pegawai', type: 'timestamp', nullable: true })
   signedAtPegawai: Date | null;
+
+  @Column({ name: 'checked_at', type: 'timestamp', nullable: true })
+  checkedAt: Date | null;
 
   @Column({ name: 'signed_at_pihak_kedua', type: 'timestamp', nullable: true })
   signedAtPihakKedua: Date | null;

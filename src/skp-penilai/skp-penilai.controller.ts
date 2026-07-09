@@ -26,10 +26,12 @@ export class SkpPenilaiController {
   @Post()
   upsert(@Body() body: {
     roleId: number;
+    checkerUserId?: number | null;
     pihakKeduaUserId?: number | null;
     penilaiUserId?: number | null;
   }) {
     return this.service.upsert(body.roleId, {
+      checkerUserId: body.checkerUserId,
       pihakKeduaUserId: body.pihakKeduaUserId,
       penilaiUserId: body.penilaiUserId,
     });

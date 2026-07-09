@@ -559,6 +559,71 @@ export class MonitoringService {
     return this.validasiBiroPKURepository.save(record);
   }
 
+  async bulkUpsertValidasiBiroPKU(items: {
+    indikatorId: number;
+    tahun: string;
+    jumlahValid: number | null;
+    keterangan?: string;
+    inputBy?: number;
+  }[]): Promise<{ saved: number; skipped: number }> {
+    let saved = 0;
+    let skipped = 0;
+    for (const item of items) {
+      try {
+        await this.upsertValidasiBiroPKU(item);
+        saved++;
+      } catch {
+        skipped++;
+      }
+    }
+    return { saved, skipped };
+  }
+
+  /** Jumlah realisasi yang diajukan per leaf indikator (sebelum override Biro PKU).
+   *  Return: Record<indikatorId, totalRealisasi>
+   */
+  async getRealisasiCounts(jenis: string, tahun: string): Promise<Record<number, number>> {
+    // Cari semua leaf indikator berdasarkan jenis
+    const leafLevel = jenis === 'IKU' ? 2 : 3;
+    const leafIndikators = await this.indikatorRepository.find({ where: { jenis, level: leafLevel } });
+    if (leafIndikators.length === 0) return {};
+
+    const ids = leafIndikators.map((i) => i.id);
+    const result: Record<number, number> = {};
+
+    // Sum dari tabel realisasi (realisasi_angka)
+    const realisasiRows = await this.realisasiRepository
+      .createQueryBuilder('r')
+      .select('r.indikator_id', 'indikatorId')
+      .addSelect('SUM(r.realisasi_angka)', 'total')
+      .where('r.indikator_id IN (:...ids)', { ids })
+      .andWhere('r.tahun = :tahun', { tahun })
+      .groupBy('r.indikator_id')
+      .getRawMany<{ indikatorId: number; total: string }>();
+
+    for (const row of realisasiRows) {
+      result[row.indikatorId] = Number(row.total) || 0;
+    }
+
+    // Count dari tabel realisasi_file (file per indikator)
+    const fileRows = await this.realisasiFileRepository
+      .createQueryBuilder('f')
+      .select('f.indikator_id', 'indikatorId')
+      .addSelect('COUNT(f.id)', 'total')
+      .where('f.indikator_id IN (:...ids)', { ids })
+      .andWhere('f.tahun = :tahun', { tahun })
+      .groupBy('f.indikator_id')
+      .getRawMany<{ indikatorId: number; total: string }>();
+
+    for (const row of fileRows) {
+      const fileCount = Number(row.total) || 0;
+      // Ambil nilai terbesar antara formal submission dan file count
+      result[row.indikatorId] = Math.max(result[row.indikatorId] ?? 0, fileCount);
+    }
+
+    return result;
+  }
+
   /**
    * Kembalikan daftar L0 indikator ID yang berada dalam scope seorang user.
    * Scope ditentukan dari: (1) cascadeChain pada indikator, (2) disposisi langsung ke user.

@@ -27,7 +27,7 @@ export class SkpPenilaiService {
 
   async findAll() {
     const configs = await this.repo.find({
-      relations: ['role', 'pihakKeduaUser', 'penilaiUser'],
+      relations: ['role', 'checkerUser', 'pihakKeduaUser', 'penilaiUser'],
       order: { role: { level: 'ASC' } },
     });
     return configs.map((c) => ({
@@ -36,7 +36,10 @@ export class SkpPenilaiService {
       roleName: c.role?.name ?? '',
       roleLevel: c.role?.level ?? 0,
       unitNama: c.role?.unitNama ?? '',
-      // Rencana SKP
+      // Checker (Rencana SKP — step 1)
+      checkerUserId: c.checkerUserId ?? null,
+      checkerNama: c.checkerUser?.nama ?? null,
+      // Pihak Kedua (Rencana SKP — step 2)
       pihakKeduaUserId: c.pihakKeduaUserId ?? null,
       pihakKeduaNama: c.pihakKeduaUser?.nama ?? null,
       // EKP
@@ -56,7 +59,12 @@ export class SkpPenilaiService {
       where: { isPrimary: true },
       relations: ['role'],
     });
-    const roleMap = new Map(userRoles.map((ur) => [ur.userId, ur.role?.name ?? '']));
+    // Jika user punya >1 role primary, ambil yang level-nya terendah (jabatan tertinggi)
+    const roleMap = new Map<number, string>();
+    const sorted = [...userRoles].sort((a, b) => (b.role?.level ?? 99) - (a.role?.level ?? 99));
+    for (const ur of sorted) {
+      roleMap.set(ur.userId, ur.role?.name ?? '');
+    }
     return users.map((u) => ({
       id: u.id,
       nama: u.nama,
@@ -84,16 +92,18 @@ export class SkpPenilaiService {
   }
 
   /** Upsert config by roleId — semua field opsional */
-  async upsert(roleId: number, body: { pihakKeduaUserId?: number | null; penilaiUserId?: number | null }) {
+  async upsert(roleId: number, body: { checkerUserId?: number | null; pihakKeduaUserId?: number | null; penilaiUserId?: number | null }) {
     const existing = await this.repo.findOne({ where: { roleId } });
     if (existing) {
       const updates: Partial<SkpPenilaiConfig> = {};
+      if (body.checkerUserId !== undefined) updates.checkerUserId = body.checkerUserId;
       if (body.pihakKeduaUserId !== undefined) updates.pihakKeduaUserId = body.pihakKeduaUserId;
       if (body.penilaiUserId !== undefined) updates.penilaiUserId = body.penilaiUserId;
       await this.repo.update(existing.id, updates);
     } else {
       const created = this.repo.create({
         roleId,
+        checkerUserId: body.checkerUserId ?? null,
         pihakKeduaUserId: body.pihakKeduaUserId ?? null,
         penilaiUserId: body.penilaiUserId ?? null,
       });
@@ -101,7 +111,7 @@ export class SkpPenilaiService {
     }
     return this.repo.findOne({
       where: { roleId },
-      relations: ['role', 'pihakKeduaUser', 'penilaiUser'],
+      relations: ['role', 'checkerUser', 'pihakKeduaUser', 'penilaiUser'],
     });
   }
 
@@ -119,10 +129,24 @@ export class SkpPenilaiService {
     return 'pending';
   }
 
-  /** Ambil semua bawahan yang dikonfigurasi untuk userId ini sebagai Pihak Kedua atau Penilai.
-   *  ekpBawahan hanya dikembalikan jika SKP bawahan sudah divalidasi oleh atasan langsung. */
+  /** Normalize status lama ke nama baru */
+  private normalizeRencanaStatus(s: string): string {
+    if (s === 'disetujui_pegawai') return 'signed_pegawai';
+    if (s === 'tervalidasi_atasan') return 'checked';
+    return s;
+  }
+
+  /** Ambil bawahan untuk checker, pihak kedua, dan penilai berdasarkan konfigurasi.
+   *  - checkerBawahan   : bawahan yang perlu dicek (status signed_pegawai)
+   *  - rencanaSKPBawahan: bawahan yang siap di-TTD Pihak Kedua (status checked, atau signed_pegawai jika tanpa checker)
+   *  - ekpBawahan       : bawahan yang sudah divalidasi atasan langsung
+   */
   async getCheckerBawahan(userId: number, tahun: string) {
     const configs = await this.repo.find({ relations: ['role'] });
+
+    const checkerRoleIds = configs
+      .filter((c) => c.checkerUserId === userId)
+      .map((c) => c.roleId);
 
     const pihakKeduaRoleIds = configs
       .filter((c) => c.pihakKeduaUserId === userId)
@@ -132,9 +156,12 @@ export class SkpPenilaiService {
       .filter((c) => c.penilaiUserId === userId)
       .map((c) => c.roleId);
 
-    const allRoleIds = [...new Set([...pihakKeduaRoleIds, ...penilaiRoleIds])];
+    // Map roleId → apakah ada checker dikonfigurasi
+    const roleHasChecker = new Map(configs.map((c) => [c.roleId, !!c.checkerUserId]));
+
+    const allRoleIds = [...new Set([...checkerRoleIds, ...pihakKeduaRoleIds, ...penilaiRoleIds])];
     if (allRoleIds.length === 0) {
-      return { rencanaSKPBawahan: [], ekpBawahan: [] };
+      return { checkerBawahan: [], rencanaSKPBawahan: [], ekpBawahan: [] };
     }
 
     const userRolesFiltered = await this.userRoleRepo.find({
@@ -145,45 +172,59 @@ export class SkpPenilaiService {
     const dedup = <T extends { userId: number }>(arr: T[]) =>
       arr.filter((v, i, a) => a.findIndex((x) => x.userId === v.userId) === i);
 
+    const mapUser = (ur: (typeof userRolesFiltered)[0]) => ({
+      userId: ur.userId,
+      nama: ur.user?.nama ?? '',
+      nip: ur.user?.nip ?? null,
+      email: ur.user?.email ?? '',
+      jabatan: ur.role?.name ?? '',
+      roleId: ur.roleId,
+    });
+
+    const checkerCandidates = dedup(
+      userRolesFiltered.filter((ur) => checkerRoleIds.includes(ur.roleId)).map(mapUser),
+    );
+
     const rencanaCandidates = dedup(
-      userRolesFiltered
-        .filter((ur) => pihakKeduaRoleIds.includes(ur.roleId))
-        .map((ur) => ({
-          userId: ur.userId,
-          nama: ur.user?.nama ?? '',
-          nip: ur.user?.nip ?? null,
-          email: ur.user?.email ?? '',
-          jabatan: ur.role?.name ?? '',
-          roleId: ur.roleId,
-        })),
+      userRolesFiltered.filter((ur) => pihakKeduaRoleIds.includes(ur.roleId)).map(mapUser),
     );
 
     const ekpCandidates = dedup(
-      userRolesFiltered
-        .filter((ur) => penilaiRoleIds.includes(ur.roleId))
-        .map((ur) => ({
-          userId: ur.userId,
-          nama: ur.user?.nama ?? '',
-          nip: ur.user?.nip ?? null,
-          email: ur.user?.email ?? '',
-          jabatan: ur.role?.name ?? '',
-          roleId: ur.roleId,
-        })),
+      userRolesFiltered.filter((ur) => penilaiRoleIds.includes(ur.roleId)).map(mapUser),
     );
 
-    // Rencana SKP: tampilkan semua dosen yang dikonfigurasi, dengan status TTD masing-masing
-    const rencanaUserIds = rencanaCandidates.map((c) => c.userId);
-    const rencanaRecords = rencanaUserIds.length
+    // Ambil status rencana untuk semua candidate yang relevan
+    const allRencanaUserIds = [...new Set([
+      ...checkerCandidates.map((c) => c.userId),
+      ...rencanaCandidates.map((c) => c.userId),
+    ])];
+    const rencanaRecords = allRencanaUserIds.length
       ? await this.skpRencanaRepo
           .createQueryBuilder('s')
-          .where('s.user_id IN (:...ids)', { ids: rencanaUserIds })
+          .where('s.user_id IN (:...ids)', { ids: allRencanaUserIds })
           .andWhere('s.tahun = :tahun', { tahun })
           .getMany()
       : [];
-    const rencanaStatusMap = new Map(rencanaRecords.map((r) => [r.userId, r.status]));
+    const rencanaStatusMap = new Map(
+      rencanaRecords.map((r) => [r.userId, this.normalizeRencanaStatus(r.status)]),
+    );
 
-    const rencanaSKPBawahan = rencanaCandidates
-      .map((c) => ({ ...c, rencanaStatus: rencanaStatusMap.get(c.userId) ?? 'draft' }));
+    // Checker: tampilkan bawahan yang menunggu validasi checker (status signed_pegawai)
+    const checkerBawahan = checkerCandidates
+      .map((c) => ({ ...c, rencanaStatus: rencanaStatusMap.get(c.userId) ?? 'draft' }))
+      .filter((c) => c.rencanaStatus === 'signed_pegawai');
+
+    // Pihak Kedua: tampilkan bawahan siap di-TTD
+    //   - Jika role punya checker → tunggu 'checked'
+    //   - Jika role tidak punya checker → bisa langsung sign dari 'signed_pegawai'
+    const rencanaSKPBawahan = rencanaCandidates.map((c) => {
+      const rencanaStatus = rencanaStatusMap.get(c.userId) ?? 'draft';
+      return { ...c, rencanaStatus };
+    }).filter((c) => {
+      const hasChecker = roleHasChecker.get(c.roleId) ?? false;
+      if (hasChecker) return c.rencanaStatus === 'checked' || c.rencanaStatus === 'signed_pihak_kedua';
+      return c.rencanaStatus === 'signed_pegawai' || c.rencanaStatus === 'signed_pihak_kedua';
+    });
 
     // EKP: hanya tampilkan yang sudah divalidasi atasan langsung
     const ekpBawahan: (typeof ekpCandidates[0] & { skpStatus: string })[] = [];
@@ -197,6 +238,6 @@ export class SkpPenilaiService {
       }
     }
 
-    return { rencanaSKPBawahan, ekpBawahan };
+    return { checkerBawahan, rencanaSKPBawahan, ekpBawahan };
   }
 }
