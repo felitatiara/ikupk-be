@@ -283,8 +283,8 @@ export class RealisasiService {
   async getMySkpStatus(userId: number, tahun: string): Promise<{
     status: 'approved' | 'rejected' | 'pending';
     realisasi: any[];
-    atasan: { nama: string; nip: string | null } | null;
-    atasanPenilai: { nama: string; nip: string | null } | null;
+    atasan: { nama: string; nip: string | null; jabatan: string | null } | null;
+    atasanPenilai: { nama: string; nip: string | null; jabatan: string | null } | null;
   }> {
     const realisasiList = await this.realisasiRepository.find({
       where: { createdBy: userId, tahun },
@@ -318,8 +318,8 @@ export class RealisasiService {
       .andWhere("LOWER(r.name) = 'dekan'")
       .getOne();
 
-    let penilai: { nama: string; nip: string | null } | null = null;
-    let atasanPenilai: { nama: string; nip: string | null } | null = null;
+    let penilai: { nama: string; nip: string | null; jabatan: string | null } | null = null;
+    let atasanPenilai: { nama: string; nip: string | null; jabatan: string | null } | null = null;
 
     // Ambil config dari master (admin-set) — dua field terpisah
     if (myRoleId) {
@@ -330,12 +330,30 @@ export class RealisasiService {
 
       // Pihak Kedua Rencana SKP (atasanPenilai dalam response)
       if (config?.pihakKeduaUser) {
-        atasanPenilai = { nama: config.pihakKeduaUser.nama, nip: config.pihakKeduaUser.nip ?? null };
+        const pihakKeduaRoles = await this.userRoleRepository.find({
+          where: { userId: config.pihakKeduaUser.id },
+          relations: ['role'],
+        });
+        const pkSenior = [...pihakKeduaRoles].sort((a, b) => (a.role?.level ?? 99) - (b.role?.level ?? 99))[0];
+        atasanPenilai = {
+          nama: config.pihakKeduaUser.nama,
+          nip: config.pihakKeduaUser.nip ?? null,
+          jabatan: pkSenior?.role?.name ?? null,
+        };
       }
 
       // Pejabat Penilai Kinerja EKP (penilai dalam response)
       if (config?.penilaiUser) {
-        penilai = { nama: config.penilaiUser.nama, nip: config.penilaiUser.nip ?? null };
+        const penilaiRoles = await this.userRoleRepository.find({
+          where: { userId: config.penilaiUser.id },
+          relations: ['role'],
+        });
+        const pnSenior = [...penilaiRoles].sort((a, b) => (a.role?.level ?? 99) - (b.role?.level ?? 99))[0];
+        penilai = {
+          nama: config.penilaiUser.nama,
+          nip: config.penilaiUser.nip ?? null,
+          jabatan: pnSenior?.role?.name ?? null,
+        };
       }
     }
 
@@ -352,7 +370,7 @@ export class RealisasiService {
         )
         .getOne();
       penilai = wd1Row?.user
-        ? { nama: wd1Row.user.nama, nip: wd1Row.user.nip ?? null }
+        ? { nama: wd1Row.user.nama, nip: wd1Row.user.nip ?? null, jabatan: wd1Row.role?.name ?? null }
         : null;
     }
 
@@ -360,7 +378,7 @@ export class RealisasiService {
     if (!atasanPenilai) {
       const dekanUser = dekanRow?.user ?? null;
       if (dekanUser) {
-        atasanPenilai = { nama: dekanUser.nama, nip: dekanUser.nip ?? null };
+        atasanPenilai = { nama: dekanUser.nama, nip: dekanUser.nip ?? null, jabatan: dekanRow?.role?.name ?? null };
       }
     }
 

@@ -334,6 +334,23 @@ export class UsersService {
     return result;
   }
 
+  async createRole(dto: { name: string; unitNama: string; level: number }): Promise<Role> {
+    const role = this.roleRepo.create({ name: dto.name, unitNama: dto.unitNama, level: dto.level });
+    return this.roleRepo.save(role);
+  }
+
+  async updateRole(id: number, dto: { name?: string; unitNama?: string; level?: number }): Promise<Role | null> {
+    await this.roleRepo.update(id, dto);
+    return this.roleRepo.findOne({ where: { id } });
+  }
+
+  async deleteRole(id: number): Promise<{ deleted: boolean; reason?: string }> {
+    const count = await this.userRoleRepo.count({ where: { roleId: id } });
+    if (count > 0) return { deleted: false, reason: `Role masih digunakan oleh ${count} pengguna` };
+    await this.roleRepo.delete(id);
+    return { deleted: true };
+  }
+
   async findAllDosen(): Promise<any[]> {
     const userRoles = await this.userRoleRepo.find({
       where: { role: { name: 'Dosen' } },

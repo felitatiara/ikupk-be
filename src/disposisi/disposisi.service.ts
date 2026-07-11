@@ -39,11 +39,12 @@ export class DisposisiService {
       where: { toUserId, indikatorId, tahun },
     });
     if (received.length === 0) return 0;
-    // Prefer explicit disposisi (fromUserId != null) over auto-cascade (fromUserId = null)
-    // to avoid double-counting when both exist for the same indikator.
+    // Prefer explicit disposisi (fromUserId != null) over auto-cascade (fromUserId = null).
+    // Use SUM so a pimpinan who receives from multiple WD/senders (cascade import from
+    // multiple prodi sheets) can re-distribute the full combined amount.
     const explicit = received.filter((d) => d.fromUserId !== null);
     const toUse = explicit.length > 0 ? explicit : received;
-    return Math.max(...toUse.map((d) => Number(d.jumlahTarget)));
+    return toUse.reduce((sum, d) => sum + Number(d.jumlahTarget), 0);
   }
 
   /**

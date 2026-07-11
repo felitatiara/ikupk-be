@@ -400,14 +400,29 @@ export class IndikatorService {
       target: number | null;
       satuan: string | null;
       sumberData: string;
+      linkedIkuKode?: string | null;
     }>,
+    clearFirst = false,
   ): Promise<{ imported: number; errors: string[] }> {
+    if (clearFirst) {
+      await this.indikatorRepository.delete({ jenis, tahun });
+    }
+
     const errors: string[] = [];
     const kodeToId = new Map<string, number>();
 
     for (const row of rows) {
       try {
         const parentId = row.parentKode ? (kodeToId.get(row.parentKode) ?? null) : null;
+
+        // Resolve PK → IKU linkage
+        let resolvedLinkedIkuId: number | null = null;
+        if (row.linkedIkuKode) {
+          const ikuInd = await this.indikatorRepository.findOne({
+            where: { jenis: 'IKU', kode: row.linkedIkuKode, tahun },
+          });
+          resolvedLinkedIkuId = ikuInd?.id ?? null;
+        }
 
         let indikator = await this.indikatorRepository.findOne({
           where: { jenis, tahun, kode: row.kode },
@@ -419,6 +434,7 @@ export class IndikatorService {
           indikator.parentId = parentId;
           if (row.kategori) indikator.kategori = row.kategori;
           indikator.sumberData = row.sumberData || 'repository';
+          if (resolvedLinkedIkuId !== null) indikator.linkedIkuId = resolvedLinkedIkuId;
           indikator = await this.indikatorRepository.save(indikator);
         } else {
           indikator = await this.indikatorRepository.save(
@@ -431,6 +447,7 @@ export class IndikatorService {
               parentId,
               kategori: row.kategori ?? null,
               sumberData: row.sumberData || 'repository',
+              linkedIkuId: resolvedLinkedIkuId,
             }),
           );
         }
@@ -473,7 +490,7 @@ export class IndikatorService {
         if (!l1.cascadeChain) continue;
         try {
           const chain = JSON.parse(l1.cascadeChain) as (number | number[])[];
-          await this.materializeCascadeDisposisi(l1.id, chain, true);
+          await this.materializeCascadeDisposisi(l1.id, chain, false);
         } catch {
           /* skip malformed chain */
         }
@@ -1360,10 +1377,14 @@ export class IndikatorService {
     }
 
     // 3. Isi data disposisi per bawahan
+    // For Kajur/Kaprodi (roleLevel >= 2): filter by fromUserId = userId so we only count
+    // targets distributed BY the current user, not via a different cascade path (e.g. Wadek).
     if (bawahanIds.length > 0) {
-      const disposisiList = await this.disposisiRepo.find({
-        where: { toUserId: In(bawahanIds), tahun },
-      });
+      const disposisiWhere =
+        roleLevel <= 1
+          ? { toUserId: In(bawahanIds), tahun }
+          : { toUserId: In(bawahanIds), tahun, fromUserId: userId };
+      const disposisiList = await this.disposisiRepo.find({ where: disposisiWhere });
       for (const d of disposisiList) {
         const row = leafRows.find((r) => r.leafId === d.indikatorId);
         if (row)

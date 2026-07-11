@@ -132,15 +132,15 @@ export class IndikatorController {
   @Post('import-bulk')
   async importBulk(
     @Body() body: {
-      jenis: string; tahun: string;
+      jenis: string; tahun: string; clearFirst?: boolean;
       rows: Array<{
         kode: string; nama: string; level: number; parentKode: string | null;
         kategori: string | null; tenggat: string | null; target: number | null;
-        satuan: string | null; sumberData: string;
+        satuan: string | null; sumberData: string; linkedIkuKode?: string | null;
       }>;
     },
   ) {
-    const result = await this.indikatorService.importBulk(body.jenis, body.tahun, body.rows);
+    const result = await this.indikatorService.importBulk(body.jenis, body.tahun, body.rows, body.clearFirst ?? false);
     this.eventsService.emit('indikator', 'bulk');
     return result;
   }

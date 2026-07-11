@@ -30,6 +30,21 @@ export class UsersController {
   @Get('roles')
   findAllRoles() { return this.usersService.findAllRoles(); }
 
+  @Post('roles')
+  createRole(@Body() body: { name: string; unitNama: string; level: number }) {
+    return this.usersService.createRole(body);
+  }
+
+  @Put('roles/:id')
+  updateRole(@Param('id', ParseIntPipe) id: number, @Body() body: { name?: string; unitNama?: string; level?: number }) {
+    return this.usersService.updateRole(id, body);
+  }
+
+  @Delete('roles/:id')
+  deleteRole(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.deleteRole(id);
+  }
+
   @Get('by-role')
   findByRole(@Query('roleId', ParseIntPipe) roleId: number) {
     return this.usersService.findByRole(roleId);

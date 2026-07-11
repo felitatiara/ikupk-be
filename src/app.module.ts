@@ -35,6 +35,7 @@ import { SkpPenilaiModule } from './skp-penilai/skp-penilai.module';
 import { SkpPenilaiConfig } from './skp-penilai/skp-penilai.entity';
 import { SkpRencanaModule } from './skp-rencana/skp-rencana.module';
 import { SkpRencanaStatus } from './skp-rencana/skp-rencana.entity';
+import { RoleViewPermission } from './roles/role-view-permission.entity';
 import jwtConfig from './config/jwt.config';
 
 @Module({
@@ -65,6 +66,7 @@ import jwtConfig from './config/jwt.config';
           ValidasiBiroPKU,
           SkpPenilaiConfig,
           SkpRencanaStatus,
+          RoleViewPermission,
         ],
         synchronize: configService.get('DATABASE_SYNCHRONIZE') === 'true',
         logging: configService.get('DATABASE_LOGGING') === 'true',

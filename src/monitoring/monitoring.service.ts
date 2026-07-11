@@ -427,6 +427,7 @@ export class MonitoringService {
         disposisiChain.push({
           disposisiId: d.id,
           parentDisposisiId: d.parentId,
+          fromUserId: d.fromUserId ?? null,
           indikatorId: d.indikatorId,
           indikatorKode: d.indikator?.kode ?? '',
           indikatorNama: d.indikator?.nama ?? '',
