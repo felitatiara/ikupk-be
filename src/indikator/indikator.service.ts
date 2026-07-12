@@ -775,12 +775,22 @@ export class IndikatorService {
       }
     }
 
-    // Jika user mendisposisikan ke diri sendiri, tampilkan jumlah self-disposisi
-    // sebagai target personal (bukan jumlah total yang diterima dari atasan)
+    // Self-disposisi (from=user, to=user) adalah target personal dosen.
+    // Simpan untuk post-filter dosen di bawah; jangan masukkan ke disposisiByIndikator
+    // sekarang karena akan menimpa jumlah chain yang diterima dari atasan (KaJur→KaProdi).
     const selfDisposisis = disposisis.filter((d) => d.fromUserId === userId);
-    for (const d of selfDisposisis) {
-      disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
-    }
+
+    // Indikator di mana user mendistribusikan FROM dirinya sendiri ke user LAIN (sebagai pimpinan).
+    // Digunakan di post-filter dosen untuk memisahkan penerimaan KaProdi dari penerimaan dosen leaf.
+    const distributedByUser = await this.disposisiRepo.find({
+      where: { fromUserId: userId, tahun },
+      select: ['indikatorId', 'toUserId'],
+    });
+    const pimpinanIndikatorIds = new Set(
+      (distributedByUser as Array<{ indikatorId: number; toUserId: number }>)
+        .filter((d) => d.toUserId !== userId)
+        .map((d) => d.indikatorId),
+    );
 
     // Auto-cascade: semua role dalam cascadeChain suatu L1 otomatis menerima
     // L1 tersebut beserta anak-anaknya. Chain selalu disimpan di level L1
@@ -873,6 +883,57 @@ export class IndikatorService {
               .filter((c: CascadeLeaf) => c.nilaiTarget != null)
               .reduce((s: number, c: CascadeLeaf) => s + Number(c.nilaiTarget), 0);
             disposisiByIndikator.set(sub.id, sub.nilaiTarget ?? childSum);
+          }
+        }
+      }
+    }
+
+    // Post-filter untuk pimpinan/chain view: hapus penerimaan disposisi dari receivedFromOthers
+    // yang L1 parent-nya TIDAK ada dalam cascadedL1Ids. Penerimaan seperti ini adalah data
+    // stale dari import yang salah atau penerimaan sebagai dosen (bukan sebagai pimpinan chain).
+    // Hanya chain receipt yang benar-benar masuk cascade chain role ini yang boleh tampil.
+    if (cascadedL1Ids.size > 0) {
+      type PfLeaf = { id: number; children?: Array<{ id: number }> };
+      type PfSub = { id: number; children: PfLeaf[] };
+      type PfGroup = { id: number; subIndikators: PfSub[] };
+      const childToL1Map = new Map<number, number>();
+      for (const group of fullGrouped as PfGroup[]) {
+        for (const sub of group.subIndikators) {
+          childToL1Map.set(sub.id, sub.id); // L1 maps to itself
+          for (const child of sub.children ?? []) {
+            childToL1Map.set(child.id, sub.id);
+            for (const gc of child.children ?? []) {
+              childToL1Map.set(gc.id, sub.id);
+            }
+          }
+        }
+      }
+      for (const indId of [...disposisiByIndikator.keys()]) {
+        if (cascadeFallbackIds.has(indId)) continue; // cascade auto-fill, biarkan
+        const l1Id = childToL1Map.get(indId);
+        if (l1Id !== undefined && !cascadedL1Ids.has(l1Id)) {
+          disposisiByIndikator.delete(indId);
+        }
+      }
+    }
+
+    // Post-filter untuk dosen/leaf view: ketika role saat ini TIDAK ada dalam cascade chain
+    // manapun (cascadedL1Ids.size === 0), artinya user sedang mengakses workspace sebagai
+    // dosen leaf, bukan pimpinan. Dalam konteks ini:
+    //   1. Override chain amounts dengan target personal (self-disposisi)
+    //   2. Hapus indikator di mana user bertindak sebagai pimpinan (mendistribusikan ke orang lain)
+    //      tapi tidak punya target personal — itu adalah penerimaan KaProdi, bukan penerimaan dosen.
+    if (cascadedL1Ids.size === 0) {
+      // Tambahkan / override dengan target personal dosen
+      for (const d of selfDisposisis) {
+        disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
+      }
+      // Hapus penerimaan chain KaProdi yang tidak punya target dosen personal
+      if (pimpinanIndikatorIds.size > 0) {
+        const selfIndIds = new Set(selfDisposisis.map((d) => d.indikatorId));
+        for (const indId of pimpinanIndikatorIds) {
+          if (!selfIndIds.has(indId)) {
+            disposisiByIndikator.delete(indId);
           }
         }
       }
@@ -1003,6 +1064,15 @@ export class IndikatorService {
     const indikatorIds = [...allTargetIds];
     const realisasiMap = new Map<number, number>();
     const validRealisasiMap = new Map<number, number>();
+    // Realisasi yang sudah dinilai (minimal validated_atasan) — ditampilkan langsung di SKP
+    // tanpa menunggu proses approval Dokumen Hasil SKP (approved).
+    // Untuk data eksternal/Talenta tanpa validFileCount, gunakan realisasiAngka sebagai fallback.
+    const finalValidRealisasiMap = new Map<number, number>();
+    const VALIDATED_STATUSES = [
+      'validated_atasan',
+      'validated_wd2',
+      'approved',
+    ];
     if (indikatorIds.length > 0) {
       const realisasiList = await this.realisasiRepo
         .createQueryBuilder('r')
@@ -1020,6 +1090,16 @@ export class IndikatorService {
             r.indikatorId,
             (validRealisasiMap.get(r.indikatorId) ?? 0) +
               Number(r.validFileCount),
+          );
+        }
+        if (VALIDATED_STATUSES.includes(r.status)) {
+          const val =
+            r.validFileCount !== null
+              ? Number(r.validFileCount)
+              : Number(r.realisasiAngka);
+          finalValidRealisasiMap.set(
+            r.indikatorId,
+            (finalValidRealisasiMap.get(r.indikatorId) ?? 0) + val,
           );
         }
       }
@@ -1062,35 +1142,45 @@ export class IndikatorService {
         // Aggregate level-3 (PK rincian) realisasi up to sub
         let subReal = realisasiMap.get(sub.id) ?? 0;
         let subValid: number | null = validRealisasiMap.get(sub.id) ?? null;
+        let subFinalValid: number | null = finalValidRealisasiMap.get(sub.id) ?? null;
 
         for (const child of (sub.children ?? []) as {
           id: number;
           realisasiJumlah: number;
           validRealisasiJumlah: number | null;
+          finalValidRealisasiJumlah: number | null;
           children?: {
             id: number;
             realisasiJumlah: number;
             validRealisasiJumlah: number | null;
+            finalValidRealisasiJumlah: number | null;
           }[];
         }[]) {
           const childReal = realisasiMap.get(child.id) ?? 0;
           const childValid = validRealisasiMap.get(child.id) ?? null;
+          const childFinalValid = finalValidRealisasiMap.get(child.id) ?? null;
           child.realisasiJumlah = childReal;
           child.validRealisasiJumlah = childValid;
+          child.finalValidRealisasiJumlah = childFinalValid;
           subReal += childReal;
           if (childValid !== null) subValid = (subValid ?? 0) + childValid;
+          if (childFinalValid !== null) subFinalValid = (subFinalValid ?? 0) + childFinalValid;
           for (const gc of child.children ?? []) {
             const gcReal = realisasiMap.get(gc.id) ?? 0;
             const gcValid = validRealisasiMap.get(gc.id) ?? null;
+            const gcFinalValid = finalValidRealisasiMap.get(gc.id) ?? null;
             gc.realisasiJumlah = gcReal;
             gc.validRealisasiJumlah = gcValid;
+            gc.finalValidRealisasiJumlah = gcFinalValid;
             subReal += gcReal;
             if (gcValid !== null) subValid = (subValid ?? 0) + gcValid;
+            if (gcFinalValid !== null) subFinalValid = (subFinalValid ?? 0) + gcFinalValid;
           }
         }
 
         sub.realisasiJumlah = subReal;
         sub.validRealisasiJumlah = subValid;
+        sub.finalValidRealisasiJumlah = subFinalValid;
       }
     }
 

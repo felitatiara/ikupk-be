@@ -54,6 +54,32 @@ export class RealisasiController {
     return this.realisasiService.validateSubmission(id, validFileCount);
   }
 
+  /** Atasan meminta user merevisi submission — set status needs_revision */
+  @Patch(':id/request-revision')
+  requestRevision(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('catatan') catatan?: string,
+  ) {
+    return this.realisasiService.requestRevision(id, catatan);
+  }
+
+  /** Pejabat Penilai: daftar bawahan yang harus dinilai ekspektasinya */
+  @Get('ekspektasi-bawahan')
+  getEkspektasiBawahan(
+    @Query('penilaiId', ParseIntPipe) penilaiId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.realisasiService.getEkspektasiBawahanForPenilai(penilaiId, tahun);
+  }
+
+  /** Simpan penilaian ekspektasi */
+  @Post('ekspektasi')
+  upsertEkspektasi(
+    @Body() body: { penilaiId: number; targetUserId: number; tahun: string; ekspektasi: string; catatan?: string },
+  ) {
+    return this.realisasiService.upsertEkspektasi(body);
+  }
+
   @Post()
   create(@Body() body: { targetId: number; realisasiAngka: number; fileUrl?: string; createdBy?: number }) {
     return this.realisasiService.create(body);
@@ -78,13 +104,37 @@ export class RealisasiController {
     return this.realisasiService.getSkpBawahan(atasanId, tahun, forDekan === 'true');
   }
 
-  /** WD2: semua user yang punya realisasi validated_atasan */
+  /**
+   * Pimpinan: ambil semua realisasi bawahan yang sudah divalidasi atasan langsung,
+   * dikelompokkan per bawahan → per indikator (mengikuti rantai disposisi).
+   */
+  @Get('submissions-for-pimpinan')
+  getSubmissionsForPimpinan(
+    @Query('pimpinanId', ParseIntPipe) pimpinanId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.realisasiService.getSubmissionsForPimpinan(pimpinanId, tahun);
+  }
+
+  /**
+   * Pimpinan memvalidasi capaian satu bawahan untuk satu indikator → validated_wd2.
+   */
+  @Patch('validate-pimpinan')
+  validatePimpinan(
+    @Body() body: { pimpinanId: number; bawahanId: number; indikatorId: number; tahun: string },
+  ) {
+    return this.realisasiService.validatePimpinanForBawahan(
+      body.pimpinanId, body.bawahanId, body.indikatorId, body.tahun,
+    );
+  }
+
+  /** @deprecated Gunakan submissions-for-pimpinan */
   @Get('submissions-for-wd2')
   getSubmissionsForWD2(@Query('tahun') tahun: string) {
     return this.realisasiService.getSubmissionsForWD2(tahun);
   }
 
-  /** WD2: validasi semua realisasi validated_atasan milik seorang user → validated_wd2 */
+  /** @deprecated Gunakan validate-pimpinan */
   @Patch('skp-wd2/:userId/validate')
   validateWD2(
     @Param('userId', ParseIntPipe) userId: number,
@@ -101,6 +151,15 @@ export class RealisasiController {
     @Body('tahun') tahun: string,
   ) {
     return this.realisasiService.approveBawahanSkp(userId, action, tahun);
+  }
+
+  /** Daftar realisasi milik user yang sedang menunggu revisi (needs_revision) */
+  @Get('my-needs-revision')
+  getMyNeedsRevision(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.realisasiService.getMyNeedsRevision(userId, tahun);
   }
 
   /** Ambil submission direct-input milik user yang sedang login untuk indikator + tahun */

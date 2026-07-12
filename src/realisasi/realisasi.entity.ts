@@ -65,6 +65,10 @@ export class Realisasi {
   @Column({ type: 'text', nullable: true })
   keterangan: string | null;
 
+  // Catatan revisi dari validator — set saat requestRevision, cleared saat user re-submit
+  @Column({ name: 'catatan_revisi', type: 'text', nullable: true })
+  catatanRevisi: string | null;
+
   @Column({ name: 'created_at', type: 'timestamp', default: () => 'now()' })
   createdAt: Date;
 }

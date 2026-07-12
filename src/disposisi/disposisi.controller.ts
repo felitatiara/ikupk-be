@@ -47,9 +47,10 @@ export class DisposisiController {
     @Body('items') items: { toUserId: number; jumlahTarget: number }[],
     @Body('fromUserId') fromUserId?: number | null,
     @Body('parentId') parentId?: number | null,
+    @Body('skipValidation') skipValidation?: boolean,
   ) {
     const result = await this.disposisiService.upsertMultiple(
-      indikatorId, tahun, items, fromUserId, parentId,
+      indikatorId, tahun, items, fromUserId, parentId, skipValidation ?? false,
     );
     this.eventsService.emit('disposisi', 'updated', indikatorId);
     return result;

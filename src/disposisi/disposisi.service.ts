@@ -1,10 +1,12 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Disposisi } from './disposisi.entity';
 
 @Injectable()
 export class DisposisiService {
+  private readonly logger = new Logger(DisposisiService.name);
+
   constructor(
     @InjectRepository(Disposisi)
     private disposisiRepo: Repository<Disposisi>,
@@ -21,7 +23,7 @@ export class DisposisiService {
     }
     return this.disposisiRepo.find({
       where,
-      relations: ['toUser', 'toUser.userRoles', 'toUser.userRoles.role', 'parent'],
+      relations: ['toUser', 'toUser.userRoles', 'toUser.userRoles.role', 'fromUser', 'fromUser.userRoles', 'fromUser.userRoles.role', 'parent'],
       order: { createdAt: 'ASC' },
     });
   }
@@ -57,8 +59,9 @@ export class DisposisiService {
     items: { toUserId: number; jumlahTarget: number }[],
     fromUserId?: number | null,
     parentId?: number | null,
+    skipValidation = false,
   ): Promise<Disposisi[]> {
-    if (fromUserId) {
+    if (fromUserId && !skipValidation) {
       const received = await this.getReceivedJumlah(fromUserId, indikatorId, tahun);
       if (received > 0) {
         const totalRequested = items.reduce((sum, i) => sum + i.jumlahTarget, 0);
@@ -68,16 +71,6 @@ export class DisposisiService {
           );
         }
       }
-    }
-
-    // Auto-resolve parentId: cari disposisi yang diterima fromUserId untuk indikator ini
-    let resolvedParentId = parentId ?? null;
-    if (fromUserId && resolvedParentId === null) {
-      const parentDisposisi = await this.disposisiRepo.findOne({
-        where: { toUserId: fromUserId, indikatorId, tahun },
-        order: { id: 'ASC' },
-      });
-      resolvedParentId = parentDisposisi?.id ?? null;
     }
 
     const deleteQb = this.disposisiRepo
@@ -92,10 +85,27 @@ export class DisposisiService {
       deleteQb.andWhere('from_user_id IS NULL');
     }
 
-    await deleteQb.execute();
+    try {
+      await deleteQb.execute();
+    } catch (err: any) {
+      this.logger.error(`DELETE failed [indId=${indikatorId} from=${fromUserId ?? 'null'}]: ${err?.message}`, err?.stack);
+      throw new InternalServerErrorException(`Gagal menghapus disposisi lama: ${err?.message ?? err}`);
+    }
+
+    // Resolve parentId AFTER delete so we always find the freshly-created parent record,
+    // not a stale record from a previous import that might have been deleted by an
+    // earlier step in the same cascade run.
+    let resolvedParentId = parentId ?? null;
+    if (fromUserId && resolvedParentId === null) {
+      const parentDisposisi = await this.disposisiRepo.findOne({
+        where: { toUserId: fromUserId, indikatorId, tahun },
+        order: { id: 'ASC' },
+      });
+      resolvedParentId = parentDisposisi?.id ?? null;
+    }
 
     const entities = items
-      .filter((item) => item.jumlahTarget > 0)
+      .filter((item) => item.jumlahTarget > 0 && item.toUserId)
       .map((item) =>
         this.disposisiRepo.create({
           indikatorId,
@@ -109,7 +119,15 @@ export class DisposisiService {
       );
 
     if (entities.length === 0) return [];
-    return this.disposisiRepo.save(entities);
+    try {
+      return await this.disposisiRepo.save(entities);
+    } catch (err: any) {
+      this.logger.error(
+        `INSERT failed [indId=${indikatorId} from=${fromUserId ?? 'null'} parentId=${resolvedParentId ?? 'null'} items=${JSON.stringify(entities.map(e => ({ toUserId: e.toUserId, jumlahTarget: e.jumlahTarget })))}]: ${err?.message}`,
+        err?.stack,
+      );
+      throw new InternalServerErrorException(`Gagal menyimpan disposisi [parentId=${resolvedParentId ?? 'null'}]: ${err?.message ?? err}`);
+    }
   }
 
   /**

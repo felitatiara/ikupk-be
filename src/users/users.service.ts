@@ -5,6 +5,8 @@ import { User } from './user.entity';
 import { UserRelation } from './user_relation.entity';
 import { Role } from '../roles/role.entity';
 import { UserRole } from '../roles/user-role.entity';
+import { RoleViewPermission } from '../roles/role-view-permission.entity';
+import { RoleFeaturePermission } from '../roles/role-feature-permission.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
@@ -20,6 +22,10 @@ export class UsersService {
     private roleRepo: Repository<Role>,
     @InjectRepository(UserRole)
     private userRoleRepo: Repository<UserRole>,
+    @InjectRepository(RoleViewPermission)
+    private roleViewPermRepo: Repository<RoleViewPermission>,
+    @InjectRepository(RoleFeaturePermission)
+    private roleFeaturePermRepo: Repository<RoleFeaturePermission>,
   ) {}
 
   async findAll(): Promise<any[]> {
@@ -347,6 +353,9 @@ export class UsersService {
   async deleteRole(id: number): Promise<{ deleted: boolean; reason?: string }> {
     const count = await this.userRoleRepo.count({ where: { roleId: id } });
     if (count > 0) return { deleted: false, reason: `Role masih digunakan oleh ${count} pengguna` };
+    await this.roleViewPermRepo.delete({ viewerRoleId: id });
+    await this.roleViewPermRepo.delete({ viewableRoleId: id });
+    await this.roleFeaturePermRepo.delete({ roleId: id });
     await this.roleRepo.delete(id);
     return { deleted: true };
   }

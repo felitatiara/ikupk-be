@@ -9,11 +9,13 @@ import { Indikator } from '../indikator/indikator.entity';
 import { UserRole } from '../roles/user-role.entity';
 import { Role } from '../roles/role.entity';
 import { SkpPenilaiConfig } from '../skp-penilai/skp-penilai.entity';
+import { VerifikasiEkspektasi } from './verifikasi-ekspektasi.entity';
+import { Notification } from '../notifications/notification.entity';
 import { RealisasiService } from './realisasi.service';
 import { RealisasiController } from './realisasi.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Realisasi, RealisasiFile, Disposisi, TargetUnit, UserRelation, Indikator, UserRole, Role, SkpPenilaiConfig])],
+  imports: [TypeOrmModule.forFeature([Realisasi, RealisasiFile, Disposisi, TargetUnit, UserRelation, Indikator, UserRole, Role, SkpPenilaiConfig, VerifikasiEkspektasi, Notification])],
   providers: [RealisasiService],
   controllers: [RealisasiController],
   exports: [RealisasiService],

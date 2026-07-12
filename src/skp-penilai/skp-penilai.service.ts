@@ -7,6 +7,7 @@ import { User } from '../users/user.entity';
 import { UserRole } from '../roles/user-role.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
 import { SkpRencanaStatus } from '../skp-rencana/skp-rencana.entity';
+import { SkpHasilStatus } from '../skp-hasil/skp-hasil.entity';
 
 @Injectable()
 export class SkpPenilaiService {
@@ -23,6 +24,8 @@ export class SkpPenilaiService {
     private readonly realisasiRepo: Repository<Realisasi>,
     @InjectRepository(SkpRencanaStatus)
     private readonly skpRencanaRepo: Repository<SkpRencanaStatus>,
+    @InjectRepository(SkpHasilStatus)
+    private readonly skpHasilRepo: Repository<SkpHasilStatus>,
   ) {}
 
   async findAll() {
@@ -161,7 +164,7 @@ export class SkpPenilaiService {
 
     const allRoleIds = [...new Set([...checkerRoleIds, ...pihakKeduaRoleIds, ...penilaiRoleIds])];
     if (allRoleIds.length === 0) {
-      return { checkerBawahan: [], rencanaSKPBawahan: [], ekpBawahan: [] };
+      return { checkerBawahan: [], rencanaSKPBawahan: [], ekpBawahan: [], hasilCheckerBawahan: [], hasilPenilaiDapatTTD: [] };
     }
 
     const userRolesFiltered = await this.userRoleRepo.find({
@@ -181,17 +184,57 @@ export class SkpPenilaiService {
       roleId: ur.roleId,
     });
 
-    const checkerCandidates = dedup(
+    // Build initial candidates
+    const rawCheckerCandidates = dedup(
       userRolesFiltered.filter((ur) => checkerRoleIds.includes(ur.roleId)).map(mapUser),
     );
-
-    const rencanaCandidates = dedup(
+    const rawRencanaCandidates = dedup(
       userRolesFiltered.filter((ur) => pihakKeduaRoleIds.includes(ur.roleId)).map(mapUser),
     );
-
-    const ekpCandidates = dedup(
+    const rawEkpCandidates = dedup(
       userRolesFiltered.filter((ur) => penilaiRoleIds.includes(ur.roleId)).map(mapUser),
     );
+
+    // ── Dual-role filter: pimpinan users follow their highest-priority configured role ──
+    // If a user has role A (e.g. Wadek 2, level 2) and role B (e.g. Dosen, level 5),
+    // and BOTH roles have a Master SKP config, they should only appear under role A.
+    // This prevents Wadek 2+Dosen from appearing in Kajur's checker list.
+    const configuredRoleIds = new Set(configs.map((c) => c.roleId));
+    const configuredRoleLevels = new Map(configs.map((c) => [c.roleId, c.role?.level ?? 99]));
+
+    const allCandidateUserIds = [...new Set([
+      ...rawCheckerCandidates.map((c) => c.userId),
+      ...rawRencanaCandidates.map((c) => c.userId),
+      ...rawEkpCandidates.map((c) => c.userId),
+    ])];
+
+    // For each candidate user, find their highest-priority configured role
+    const userHighestConfiguredRole = new Map<number, number>(); // userId → roleId
+    if (allCandidateUserIds.length > 0) {
+      const allCandidateRoles = await this.userRoleRepo.find({
+        where: { userId: In(allCandidateUserIds) },
+        relations: ['role'],
+      });
+      for (const ur of allCandidateRoles) {
+        if (!configuredRoleIds.has(ur.roleId)) continue;
+        const level = ur.role?.level ?? 99;
+        const existing = userHighestConfiguredRole.get(ur.userId);
+        const existingLevel = existing !== undefined ? (configuredRoleLevels.get(existing) ?? 99) : 99;
+        if (existing === undefined || level < existingLevel) {
+          userHighestConfiguredRole.set(ur.userId, ur.roleId);
+        }
+      }
+    }
+
+    // Keep a candidate only if the roleId they were found under IS their highest configured role
+    const isEligibleForRole = (candidateUserId: number, forRoleId: number): boolean => {
+      const highestRoleId = userHighestConfiguredRole.get(candidateUserId);
+      return highestRoleId === undefined || highestRoleId === forRoleId;
+    };
+
+    const checkerCandidates = rawCheckerCandidates.filter((c) => isEligibleForRole(c.userId, c.roleId));
+    const rencanaCandidates = rawRencanaCandidates.filter((c) => isEligibleForRole(c.userId, c.roleId));
+    const ekpCandidates = rawEkpCandidates.filter((c) => isEligibleForRole(c.userId, c.roleId));
 
     // Ambil status rencana untuk semua candidate yang relevan
     const allRencanaUserIds = [...new Set([
@@ -209,35 +252,62 @@ export class SkpPenilaiService {
       rencanaRecords.map((r) => [r.userId, this.normalizeRencanaStatus(r.status)]),
     );
 
-    // Checker: tampilkan bawahan yang menunggu validasi checker (status signed_pegawai)
-    const checkerBawahan = checkerCandidates
-      .map((c) => ({ ...c, rencanaStatus: rencanaStatusMap.get(c.userId) ?? 'draft' }))
-      .filter((c) => c.rencanaStatus === 'signed_pegawai');
+    // Checker: tampilkan SEMUA bawahan yang dikonfigurasi dengan status masing-masing
+    // (frontend menentukan action berdasarkan status)
+    const checkerBawahan = checkerCandidates.map((c) => ({
+      ...c,
+      rencanaStatus: rencanaStatusMap.get(c.userId) ?? 'draft',
+    }));
 
-    // Pihak Kedua: tampilkan bawahan siap di-TTD
-    //   - Jika role punya checker → tunggu 'checked'
-    //   - Jika role tidak punya checker → bisa langsung sign dari 'signed_pegawai'
-    const rencanaSKPBawahan = rencanaCandidates.map((c) => {
-      const rencanaStatus = rencanaStatusMap.get(c.userId) ?? 'draft';
-      return { ...c, rencanaStatus };
-    }).filter((c) => {
-      const hasChecker = roleHasChecker.get(c.roleId) ?? false;
-      if (hasChecker) return c.rencanaStatus === 'checked' || c.rencanaStatus === 'signed_pihak_kedua';
-      return c.rencanaStatus === 'signed_pegawai' || c.rencanaStatus === 'signed_pihak_kedua';
-    });
+    // Pihak Kedua: tampilkan SEMUA bawahan yang dikonfigurasi dengan status masing-masing
+    // Frontend menampilkan TTD button hanya ketika status sudah eligible
+    const rencanaSKPBawahan = rencanaCandidates.map((c) => ({
+      ...c,
+      rencanaStatus: rencanaStatusMap.get(c.userId) ?? 'draft',
+      hasChecker: roleHasChecker.get(c.roleId) ?? false,
+    }));
 
     // EKP: hanya tampilkan yang sudah divalidasi atasan langsung
-    const ekpBawahan: (typeof ekpCandidates[0] & { skpStatus: string })[] = [];
+    const ekpBawahan: (typeof ekpCandidates[0] & { skpStatus: string; hasilStatus: string })[] = [];
     for (const candidate of ekpCandidates) {
       const realisasiList = await this.realisasiRepo.find({
         where: { createdBy: candidate.userId, tahun },
       });
       const skpStatus = this.computeSkpStatus(realisasiList.map((r) => r.status));
       if (skpStatus !== 'pending') {
-        ekpBawahan.push({ ...candidate, skpStatus });
+        ekpBawahan.push({ ...candidate, skpStatus, hasilStatus: 'pending' });
       }
     }
 
-    return { checkerBawahan, rencanaSKPBawahan, ekpBawahan };
+    // Ambil status hasil SKP untuk semua kandidat relevan
+    const allHasilUserIds = [...new Set([
+      ...checkerCandidates.map((c) => c.userId),
+      ...ekpCandidates.map((c) => c.userId),
+    ])];
+    const hasilRecords = allHasilUserIds.length
+      ? await this.skpHasilRepo
+          .createQueryBuilder('h')
+          .where('h.user_id IN (:...ids)', { ids: allHasilUserIds })
+          .andWhere('h.tahun = :tahun', { tahun })
+          .getMany()
+      : [];
+    const hasilStatusMap = new Map(hasilRecords.map((r) => [r.userId, r.status]));
+
+    // Patch hasilStatus onto ekpBawahan
+    for (const b of ekpBawahan) {
+      b.hasilStatus = hasilStatusMap.get(b.userId) ?? 'pending';
+    }
+
+    // Hasil SKP Checker: bawahan yang sudah submit (signed_pegawai) dan user ini adalah checker-nya
+    const hasilCheckerBawahan = checkerCandidates
+      .filter((c) => (hasilStatusMap.get(c.userId) ?? 'pending') === 'signed_pegawai')
+      .map((c) => ({ ...c, hasilStatus: 'signed_pegawai' as const }));
+
+    // Pejabat Penilai: bawahan yang sudah dicek checker (checked) dan user ini adalah penilai-nya
+    const hasilPenilaiDapatTTD = ekpCandidates
+      .filter((c) => (hasilStatusMap.get(c.userId) ?? 'pending') === 'checked')
+      .map((c) => ({ ...c, hasilStatus: 'checked' as const }));
+
+    return { checkerBawahan, rencanaSKPBawahan, ekpBawahan, hasilCheckerBawahan, hasilPenilaiDapatTTD };
   }
 }

@@ -11,6 +11,8 @@ import { UserRelation } from '../users/user_relation.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { UserRole } from '../roles/user-role.entity';
 import { SkpPenilaiConfig } from '../skp-penilai/skp-penilai.entity';
+import { VerifikasiEkspektasi } from './verifikasi-ekspektasi.entity';
+import { Notification } from '../notifications/notification.entity';
 
 @Injectable()
 export class RealisasiService {
@@ -31,6 +33,10 @@ export class RealisasiService {
     private readonly userRoleRepository: Repository<UserRole>,
     @InjectRepository(SkpPenilaiConfig)
     private readonly skpPenilaiRepo: Repository<SkpPenilaiConfig>,
+    @InjectRepository(VerifikasiEkspektasi)
+    private readonly verifikasiEkspektasiRepo: Repository<VerifikasiEkspektasi>,
+    @InjectRepository(Notification)
+    private readonly notificationRepository: Repository<Notification>,
   ) {}
 
   async findAll(): Promise<Realisasi[]> {
@@ -73,6 +79,7 @@ export class RealisasiService {
       dosenEmail: (r.creator as any)?.email || '',
       fileCount: Number(r.realisasiAngka),
       validFileCount: r.validFileCount ?? null,
+      catatanRevisi: r.catatanRevisi ?? null,
       status: r.status,
       tahun: r.tahun,
       periode: r.periode,
@@ -121,10 +128,12 @@ export class RealisasiService {
       .addOrderBy('creator.nama', 'ASC')
       .getMany();
 
-    // Hanya tampilkan submission untuk (bawahan, indikator) yang DIDISPOSISIKAN oleh atasan ini
-    const realisasiList = useAllowedFilter
+    // Hanya tampilkan submission untuk (bawahan, indikator) yang DIDISPOSISIKAN oleh atasan ini.
+    // Exclude record sintetis '_summary' yang dibuat oleh validatePimpinanForBawahan.
+    const realisasiList = (useAllowedFilter
       ? realisasiListRaw.filter(r => allowedKeys.has(`${r.createdBy}:${r.indikatorId}`))
-      : realisasiListRaw;
+      : realisasiListRaw
+    ).filter(r => r.periode !== '_summary');
 
     // Target: hanya dari disposisi atasan ini ke bawahan ini
     const allDosenIds = [...new Set(realisasiList.map(r => r.createdBy).filter(Boolean))];
@@ -160,6 +169,7 @@ export class RealisasiService {
         dosenEmail: (r.creator as any)?.email ?? '',
         fileCount: Number(r.realisasiAngka),
         validFileCount: r.validFileCount ?? null,
+        catatanRevisi: r.catatanRevisi ?? null,
         targetDosen: disposisiMap.get(`${r.createdBy}:${r.indikatorId}`) ?? null,
         status: r.status,
         tahun: r.tahun,
@@ -291,23 +301,32 @@ export class RealisasiService {
       relations: ['indikator'],
     });
 
-    if (realisasiList.length === 0) {
-      return { status: 'pending', realisasi: [], atasan: null, atasanPenilai: null };
-    }
-
     const statuses = realisasiList.map((r) => r.status);
-    const status: 'approved' | 'rejected' | 'pending' = statuses.every((s) => s === 'approved')
+    const status: 'approved' | 'rejected' | 'pending' = realisasiList.length === 0
+      ? 'pending'
+      : statuses.every((s) => s === 'approved')
       ? 'approved'
       : statuses.some((s) => s === 'rejected')
       ? 'rejected'
       : 'pending';
 
-    // Cari role utama user ini
-    const myUserRole = await this.userRoleRepository.findOne({
-      where: { userId, isPrimary: true },
+    // Cari role dengan prioritas tertinggi yang terdaftar di Master SKP config.
+    // Untuk user dual-role (misal Wadek 2 + Dosen), gunakan config Wadek 2 (level lebih rendah),
+    // bukan config Dosen. Fallback ke role isPrimary jika tidak ada config ditemukan.
+    const allMyUserRoles = await this.userRoleRepository.find({
+      where: { userId },
       relations: ['role'],
     });
-    const myRoleId = myUserRole?.roleId ?? null;
+    allMyUserRoles.sort((a, b) => (a.role?.level ?? 99) - (b.role?.level ?? 99));
+
+    let myRoleId: number | null = null;
+    for (const ur of allMyUserRoles) {
+      const cfgExists = await this.skpPenilaiRepo.findOne({ where: { roleId: ur.roleId } });
+      if (cfgExists) { myRoleId = ur.roleId; break; }
+    }
+    if (!myRoleId) {
+      myRoleId = allMyUserRoles.find((ur) => ur.isPrimary)?.roleId ?? null;
+    }
 
     // Cari Dekan (selalu dipakai sebagai Atasan Pejabat Penilai / Pihak Kedua Rencana SKP)
     const dekanRow = await this.userRoleRepository
@@ -404,7 +423,263 @@ export class RealisasiService {
     return this.realisasiRepository.findOneOrFail({ where: { id } });
   }
 
-  /** WD2: ambil semua user yang punya realisasi dengan status validated_atasan */
+  /** Atasan meminta user merevisi submission — set needs_revision, PERTAHANKAN validFileCount, kirim notifikasi */
+  async requestRevision(id: number, catatan?: string): Promise<void> {
+    const realisasi = await this.realisasiRepository.findOne({
+      where: { id },
+      relations: ['indikator'],
+    });
+    if (!realisasi) throw new Error('Realisasi tidak ditemukan');
+    const allowed = ['pending', 'validated_atasan', 'validated_wd2', 'needs_revision'];
+    if (!allowed.includes(realisasi.status)) {
+      throw new Error('Status tidak dapat direvisi');
+    }
+    // Pertahankan validFileCount agar hasil validasi sebagian tidak hilang
+    await this.realisasiRepository.update(id, {
+      status: 'needs_revision',
+      ...(catatan !== undefined && catatan !== '' ? { catatanRevisi: catatan } : {}),
+    });
+
+    // Kirim notifikasi otomatis ke pemilik dokumen
+    if (realisasi.createdBy) {
+      const kode = realisasi.indikator?.kode ?? '';
+      const nama = realisasi.indikator?.nama ?? 'Indikator';
+      const catatanMsg = catatan ? ` Catatan: "${catatan}"` : '';
+      await this.notificationRepository.save(
+        this.notificationRepository.create({
+          userId: realisasi.createdBy,
+          type: 'permintaan_revisi',
+          indikatorId: realisasi.indikatorId,
+          tahun: realisasi.tahun,
+          message: `Validator meminta revisi dokumen Anda untuk indikator ${kode} ${nama}.${catatanMsg} Segera unggah ulang dokumen yang diperlukan.`,
+          isRead: false,
+        }),
+      );
+    }
+  }
+
+  /** Daftar realisasi milik user yang sedang menunggu revisi (needs_revision) */
+  async getMyNeedsRevision(userId: number, tahun: string): Promise<any[]> {
+    const list = await this.realisasiRepository.find({
+      where: { createdBy: userId, tahun, status: 'needs_revision' },
+      relations: ['indikator'],
+      order: { createdAt: 'DESC' },
+    });
+    return list
+      .filter((r) => r.periode !== '_summary')
+      .map((r) => ({
+        id: r.id,
+        indikatorId: r.indikatorId,
+        indikatorKode: r.indikator?.kode ?? '',
+        indikatorNama: r.indikator?.nama ?? '',
+        periode: r.periode,
+        realisasiAngka: Number(r.realisasiAngka),
+        validFileCount: r.validFileCount ?? null,
+        keterangan: r.keterangan ?? null,
+        catatanRevisi: r.catatanRevisi ?? null,
+        createdAt: r.createdAt,
+      }));
+  }
+
+  /**
+   * Pimpinan (Wadek3 / Kajur / siapapun yang mendisposisi ke level bawah):
+   * Ambil semua realisasi dosen yang sudah divalidasi atasan langsung (validated_atasan),
+   * dikelompokkan per bawahan (Kaprodi/atasan-bawah) lalu per indikator.
+   *
+   * Logika:
+   *  1. Cari semua disposisi yang dikirim OLEH pimpinanId (fromUserId = pimpinanId) → bawahan set
+   *  2. Untuk setiap pasangan (bawahan, indikator), cari disposisi DARI bawahan tersebut
+   *     ke para dosennya → child disposisi
+   *  3. Cari realisasi yang disposisiId-nya ada di child disposisi itu
+   *  4. Tampilkan yang statusnya validated_atasan (siap divalidasi pimpinan)
+   */
+  async getSubmissionsForPimpinan(pimpinanId: number, tahun: string): Promise<any[]> {
+    // 1. Disposisi yang pimpinan kirim ke bawahannya
+    const myDisposisi = await this.disposisiRepository.find({
+      where: { fromUserId: pimpinanId, tahun },
+      relations: ['toUser', 'indikator'],
+    });
+
+    if (myDisposisi.length === 0) return [];
+
+    // Kelompokkan per (bawahanId, indikatorId)
+    const bawahanIndikatorMap = new Map<string, { bawahanId: number; indikatorId: number; targetBawahan: number; bawahan: any; indikator: any }>();
+    for (const d of myDisposisi) {
+      if (!d.toUserId || !d.indikatorId) continue;
+      const key = `${d.toUserId}:${d.indikatorId}`;
+      if (!bawahanIndikatorMap.has(key)) {
+        bawahanIndikatorMap.set(key, {
+          bawahanId: d.toUserId,
+          indikatorId: d.indikatorId,
+          targetBawahan: Number(d.jumlahTarget),
+          bawahan: d.toUser,
+          indikator: d.indikator,
+        });
+      }
+    }
+
+    const result = new Map<number, any>(); // keyed by bawahanId
+
+    for (const { bawahanId, indikatorId, targetBawahan, bawahan, indikator } of bawahanIndikatorMap.values()) {
+      // Jangan izinkan user memvalidasi dirinya sendiri
+      if (bawahanId === pimpinanId) continue;
+
+      // 2. Disposisi DARI bawahan ke dosen untuk indikator ini
+      const childDisposisi = await this.disposisiRepository.find({
+        where: { fromUserId: bawahanId, indikatorId, tahun },
+        relations: ['toUser'],
+      });
+
+      if (childDisposisi.length === 0) continue;
+
+      // Dosen yang menerima disposisi dari bawahan untuk indikator ini
+      const dosenIds = childDisposisi.map((d) => d.toUserId).filter(Boolean);
+      if (dosenIds.length === 0) continue;
+
+      // 3. Realisasi dosen berdasarkan (createdBy, indikatorId) — tidak bergantung pada disposisiId
+      //    karena banyak realisasi dikirim tanpa melampirkan disposisiId
+      const realisasiList = await this.realisasiRepository
+        .createQueryBuilder('r')
+        .leftJoinAndSelect('r.creator', 'creator')
+        .leftJoinAndSelect('r.indikator', 'ind')
+        .where('r.created_by IN (:...dosenIds)', { dosenIds })
+        .andWhere('r.indikator_id = :indikatorId', { indikatorId })
+        .andWhere('r.status IN (:...statuses)', { statuses: ['validated_atasan', 'validated_wd2'] })
+        .andWhere('r.tahun = :tahun', { tahun })
+        .getMany();
+
+      if (realisasiList.length === 0) continue;
+
+      // Bangun entry bawahan
+      if (!result.has(bawahanId)) {
+        result.set(bawahanId, {
+          bawahanId,
+          bawahanNama: bawahan?.nama ?? `User ${bawahanId}`,
+          bawahanEmail: (bawahan as any)?.email ?? '',
+          indikators: [],
+        });
+      }
+
+      const childDisposisiTargetMap = new Map<number, number>();
+      for (const cd of childDisposisi) {
+        childDisposisiTargetMap.set(cd.toUserId, Number(cd.jumlahTarget));
+      }
+
+      const dosenList = realisasiList.map((r) => ({
+        realisasiId: r.id,
+        dosenId: r.createdBy,
+        dosenNama: r.creator?.nama ?? `User ${r.createdBy}`,
+        dosenEmail: (r.creator as any)?.email ?? '',
+        targetDosen: childDisposisiTargetMap.get(r.createdBy) ?? null,
+        validFileCount: r.validFileCount,
+        status: r.status,
+        tahun: r.tahun,
+        periode: r.periode,
+      }));
+
+      result.get(bawahanId)!.indikators.push({
+        indikatorId,
+        kodeIndikator: indikator?.kode ?? '',
+        namaIndikator: indikator?.nama ?? '',
+        targetBawahan,
+        totalValidFiles: dosenList.reduce((s, d) => s + (d.validFileCount ?? 0), 0),
+        dosenCount: dosenList.length,
+        pendingCount: dosenList.filter((d) => d.status === 'validated_atasan').length,
+        dosenList,
+      });
+    }
+
+    return Array.from(result.values()).map((b) => ({
+      ...b,
+      indikators: b.indikators.sort((a: any, z: any) => a.kodeIndikator.localeCompare(z.kodeIndikator)),
+    }));
+  }
+
+  /**
+   * Pimpinan memvalidasi capaian bawahan (Kaprodi) untuk satu indikator:
+   * Update semua realisasi dosen di bawah rantai pimpinan→bawahan→indikator
+   * dari validated_atasan → validated_wd2.
+   */
+  async validatePimpinanForBawahan(pimpinanId: number, bawahanId: number, indikatorId: number, tahun: string): Promise<void> {
+    if (bawahanId === pimpinanId) throw new Error('Tidak dapat memvalidasi diri sendiri');
+
+    // Verifikasi pimpinan memang mendisposisi ke bawahan untuk indikator ini
+    const parentDisp = await this.disposisiRepository.findOne({
+      where: { fromUserId: pimpinanId, toUserId: bawahanId, indikatorId, tahun },
+    });
+    if (!parentDisp) throw new Error('Disposisi tidak ditemukan');
+
+    // Cari semua child disposisi dari bawahan ke dosen untuk indikator ini
+    const childDisposisi = await this.disposisiRepository.find({
+      where: { fromUserId: bawahanId, indikatorId, tahun },
+    });
+
+    if (childDisposisi.length === 0) return;
+
+    const dosenIds = childDisposisi.map((d) => d.toUserId).filter(Boolean);
+    if (dosenIds.length === 0) return;
+
+    await this.realisasiRepository
+      .createQueryBuilder()
+      .update()
+      .set({ status: 'validated_wd2' })
+      .where('created_by IN (:...dosenIds)', { dosenIds })
+      .andWhere('indikator_id = :indikatorId', { indikatorId })
+      .andWhere('status = :status', { status: 'validated_atasan' })
+      .andWhere('tahun = :tahun', { tahun })
+      .execute();
+
+    // Buat "summary record" untuk bawahan sehingga SKP bawahan menampilkan
+    // aggregate validated dosen-nya. Hanya berlaku jika ada dosen selain bawahan
+    // itu sendiri (hindari double-count pada kasus disposisi self-referential).
+    const nonSelfDosenIds = dosenIds.filter((id) => id !== bawahanId);
+    if (nonSelfDosenIds.length > 0) {
+      const validatedRecords = await this.realisasiRepository
+        .createQueryBuilder('r')
+        .where('r.created_by IN (:...ids)', { ids: nonSelfDosenIds })
+        .andWhere('r.indikator_id = :indikatorId', { indikatorId })
+        .andWhere('r.status IN (:...statuses)', {
+          statuses: ['validated_atasan', 'validated_wd2', 'approved'],
+        })
+        .andWhere('r.tahun = :tahun', { tahun })
+        .getMany();
+
+      const totalVal = validatedRecords.reduce((sum, r) => {
+        const v =
+          r.validFileCount !== null
+            ? Number(r.validFileCount)
+            : Number(r.realisasiAngka ?? 0);
+        return sum + v;
+      }, 0);
+
+      // Hapus summary lama lalu sisipkan yang baru
+      await this.realisasiRepository.delete({
+        createdBy: bawahanId,
+        indikatorId,
+        tahun,
+        periode: '_summary',
+      } as any);
+
+      if (totalVal > 0) {
+        await this.realisasiRepository.save(
+          this.realisasiRepository.create({
+            createdBy: bawahanId,
+            indikatorId,
+            tahun,
+            periode: '_summary',
+            realisasiAngka: totalVal,
+            validFileCount: totalVal,
+            status: 'validated_wd2',
+            disposisiId: parentDisp.id,
+            roleId: null,
+            keterangan: 'Summary pimpinan validation',
+          }),
+        );
+      }
+    }
+  }
+
+  /** @deprecated Gunakan getSubmissionsForPimpinan. Tetap ada untuk backward-compat. */
   async getSubmissionsForWD2(tahun: string): Promise<any[]> {
     const realisasiList = await this.realisasiRepository
       .createQueryBuilder('r')
@@ -441,7 +716,7 @@ export class RealisasiService {
     return Array.from(byUser.values());
   }
 
-  /** WD2: validasi semua realisasi validated_atasan milik seorang user → validated_wd2 */
+  /** @deprecated Gunakan validatePimpinanForBawahan. */
   async validateWD2Batch(bawahanId: number, tahun: string): Promise<void> {
     await this.realisasiRepository.update(
       { createdBy: bawahanId, tahun, status: 'validated_atasan' },
@@ -476,6 +751,21 @@ export class RealisasiService {
     userId: number;
   }): Promise<Realisasi> {
     const { indikatorId, roleId, tahun, periode, realisasiAngka, keterangan, userId } = data;
+
+    // Prioritaskan record needs_revision agar re-submit user langsung mereset status ke pending
+    const revisionRecord = await this.realisasiRepository.findOne({
+      where: { indikatorId, tahun, periode, createdBy: userId, status: 'needs_revision' },
+    });
+    if (revisionRecord) {
+      revisionRecord.realisasiAngka = realisasiAngka;
+      revisionRecord.keterangan = keterangan ?? null;
+      revisionRecord.status = 'pending';
+      revisionRecord.validFileCount = null;
+      revisionRecord.catatanRevisi = null;
+      if (roleId !== null) revisionRecord.roleId = roleId;
+      return this.realisasiRepository.save(revisionRecord);
+    }
+
     const roleIdWhere = roleId !== null ? roleId : IsNull();
     let existing = await this.realisasiRepository.findOne({
       where: { indikatorId, roleId: roleIdWhere as any, tahun, periode, createdBy: userId },
@@ -566,26 +856,40 @@ export class RealisasiService {
     const { indikatorId, roleId, tahun, periode, fileCount, userId } = data;
 
     // Upsert realisasi user ini
-    // Gunakan IsNull() untuk kolom nullable agar TypeORM menghasilkan WHERE role_id IS NULL
-    const roleIdWhere = roleId !== null ? roleId : IsNull();
-    let existing = await this.realisasiRepository.findOne({
-      where: { indikatorId, roleId: roleIdWhere as any, tahun, periode, createdBy: userId },
+    // Prioritaskan record needs_revision agar re-submit langsung mereset status ke pending
+    let existing: Realisasi;
+    const revisionRecord = await this.realisasiRepository.findOne({
+      where: { indikatorId, tahun, periode, createdBy: userId, status: 'needs_revision' },
     });
-    if (existing) {
-      existing.realisasiAngka = fileCount;
-      existing = await this.realisasiRepository.save(existing);
+    if (revisionRecord) {
+      revisionRecord.realisasiAngka = fileCount;
+      revisionRecord.status = 'pending';
+      revisionRecord.validFileCount = null;
+      revisionRecord.catatanRevisi = null;
+      if (roleId !== null) revisionRecord.roleId = roleId;
+      existing = await this.realisasiRepository.save(revisionRecord);
     } else {
-      existing = await this.realisasiRepository.save(
-        this.realisasiRepository.create({
-          indikatorId,
-          roleId,
-          tahun,
-          periode,
-          realisasiAngka: fileCount,
-          createdBy: userId,
-          status: 'pending',
-        }),
-      );
+      // Gunakan IsNull() untuk kolom nullable agar TypeORM menghasilkan WHERE role_id IS NULL
+      const roleIdWhere = roleId !== null ? roleId : IsNull();
+      const found = await this.realisasiRepository.findOne({
+        where: { indikatorId, roleId: roleIdWhere as any, tahun, periode, createdBy: userId },
+      });
+      if (found) {
+        found.realisasiAngka = fileCount;
+        existing = await this.realisasiRepository.save(found);
+      } else {
+        existing = await this.realisasiRepository.save(
+          this.realisasiRepository.create({
+            indikatorId,
+            roleId,
+            tahun,
+            periode,
+            realisasiAngka: fileCount,
+            createdBy: userId,
+            status: 'pending',
+          }),
+        );
+      }
     }
 
     // TargetUnit.roleId adalah non-nullable; skip jika roleId null
@@ -619,5 +923,92 @@ export class RealisasiService {
       nilaiTarget: targetUnit ? Number(targetUnit.nilaiTarget) : null,
       disposisiUsers,
     };
+  }
+
+  /** Pejabat Penilai: daftar user yang harus dinilai ekspektasinya + ringkasan capaian + nilai saat ini */
+  async getEkspektasiBawahanForPenilai(penilaiId: number, tahun: string): Promise<any[]> {
+    const penilaiConfigs = await this.skpPenilaiRepo.find({ where: { penilaiUserId: penilaiId } });
+    if (penilaiConfigs.length === 0) return [];
+
+    const roleIds = penilaiConfigs.map(c => c.roleId);
+
+    const userRoles = await this.userRoleRepository.find({
+      where: { roleId: In(roleIds), isPrimary: true },
+      relations: ['user'],
+    });
+    if (userRoles.length === 0) return [];
+
+    const userIds = userRoles.map(ur => ur.userId);
+
+    const realisasiStats = await this.realisasiRepository
+      .createQueryBuilder('r')
+      .select('r.created_by', 'userId')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(
+        `COUNT(CASE WHEN r.status IN ('validated_atasan','validated_wd2','approved') THEN 1 END)`,
+        'validated',
+      )
+      .where('r.tahun = :tahun', { tahun })
+      .andWhere('r.created_by IN (:...userIds)', { userIds })
+      .groupBy('r.created_by')
+      .getRawMany();
+
+    const statsMap = new Map<number, { total: number; validated: number }>();
+    for (const row of realisasiStats) {
+      statsMap.set(Number(row.userId), { total: Number(row.total), validated: Number(row.validated) });
+    }
+
+    const ekspektasiList = await this.verifikasiEkspektasiRepo.find({
+      where: { penilaiUserId: penilaiId, targetUserId: In(userIds), tahun },
+    });
+    const ekspektasiMap = new Map<number, VerifikasiEkspektasi>();
+    for (const e of ekspektasiList) {
+      ekspektasiMap.set(e.targetUserId, e);
+    }
+
+    return userRoles
+      .map(ur => {
+        const stats = statsMap.get(ur.userId) ?? { total: 0, validated: 0 };
+        const eks = ekspektasiMap.get(ur.userId);
+        return {
+          userId: ur.userId,
+          nama: ur.user?.nama ?? `User ${ur.userId}`,
+          email: (ur.user as any)?.email ?? '',
+          totalIndikator: stats.total,
+          validatedCount: stats.validated,
+          ekspektasi: eks?.ekspektasi ?? null,
+          catatan: eks?.catatan ?? null,
+        };
+      })
+      .sort((a, b) => a.nama.localeCompare(b.nama));
+  }
+
+  /** Simpan atau perbarui penilaian ekspektasi */
+  async upsertEkspektasi(data: {
+    penilaiId: number;
+    targetUserId: number;
+    tahun: string;
+    ekspektasi: string;
+    catatan?: string;
+  }): Promise<void> {
+    const { penilaiId, targetUserId, tahun, ekspektasi, catatan } = data;
+    const existing = await this.verifikasiEkspektasiRepo.findOne({
+      where: { targetUserId, penilaiUserId: penilaiId, tahun },
+    });
+    if (existing) {
+      existing.ekspektasi = ekspektasi;
+      existing.catatan = catatan ?? null;
+      await this.verifikasiEkspektasiRepo.save(existing);
+    } else {
+      await this.verifikasiEkspektasiRepo.save(
+        this.verifikasiEkspektasiRepo.create({
+          targetUserId,
+          penilaiUserId: penilaiId,
+          tahun,
+          ekspektasi,
+          catatan: catatan ?? null,
+        }),
+      );
+    }
   }
 }
