@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { TargetUniversitas } from '../target/target.entity';
 import { TargetUnit } from '../target/target-unit.entity';
 import { Realisasi } from '../realisasi/realisasi.entity';
@@ -8,6 +8,7 @@ import { RealisasiFile } from '../realisasi/realisasi-file.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { User } from '../users/user.entity';
+import { UserRole } from '../roles/user-role.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { ValidasiBiroPKU } from './validasi-biro-pku.entity';
 
@@ -28,11 +29,24 @@ export class MonitoringService {
     private readonly baselineRepository: Repository<BaselineData>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(UserRole)
+    private readonly userRoleRepository: Repository<UserRole>,
     @InjectRepository(Disposisi)
     private readonly disposisiRepository: Repository<Disposisi>,
     @InjectRepository(ValidasiBiroPKU)
     private readonly validasiBiroPKURepository: Repository<ValidasiBiroPKU>,
   ) {}
+
+  /** Cek apakah user adalah Dekan (role level 1 dengan nama mengandung 'dekan') */
+  private async isDekan(userId: number): Promise<boolean> {
+    const userRoles = await this.userRoleRepository.find({
+      where: { userId },
+      relations: ['role'],
+    });
+    return userRoles.some(
+      (ur) => (ur.role?.level ?? 99) <= 1 && ur.role?.name?.toLowerCase().includes('dekan'),
+    );
+  }
 
   private async getBaseline(
     indikatorId: number,
@@ -627,10 +641,16 @@ export class MonitoringService {
 
   /**
    * Kembalikan daftar L0 indikator ID yang berada dalam scope seorang user.
-   * Scope ditentukan dari: (1) cascadeChain pada indikator, (2) disposisi langsung ke user.
+   * Dekan mendapat seluruh L0 (monitoring penuh). User lain: berdasarkan cascadeChain / disposisi.
    */
   async getScopeForUser(userId: number, tahun: string, jenis: string): Promise<number[]> {
     const l0s = await this.indikatorRepository.find({ where: { level: 0, jenis } });
+
+    // Dekan → akses penuh semua L0 (hanya monitoring, bukan tindakan)
+    if (await this.isDekan(userId)) {
+      return l0s.map((l) => l.id);
+    }
+
     const inScope: number[] = [];
 
     const flattenChain = (chain: unknown[]): number[] =>
@@ -659,5 +679,109 @@ export class MonitoringService {
     }
 
     return inScope;
+  }
+
+  /**
+   * Dashboard khusus Dekan: ringkasan statistik + daftar semua L0 indikator
+   * beserta status disposisi, progress, dan penerima disposisi teratas.
+   */
+  async getDekanDashboard(tahun: string, jenis: string) {
+    const l0s = await this.indikatorRepository.find({
+      where: { level: 0, jenis },
+      order: { kode: 'ASC' },
+    });
+
+    let totalBelumDisposisi = 0;
+    let totalProses = 0;
+    let totalSelesai = 0;
+    let totalCapaianSum = 0;
+    let totalCapaianCount = 0;
+
+    const items: any[] = [];
+
+    for (const l0 of l0s) {
+      const descendantIds = await this.getAllDescendantIds(l0.id);
+      const allIds = [l0.id, ...descendantIds];
+
+      // Disposisi top-level untuk indikator ini
+      const topDisposisi = await this.disposisiRepository.find({
+        where: { indikatorId: In(allIds), tahun, fromUserId: IsNull() },
+        relations: ['toUser'],
+        order: { id: 'ASC' },
+      });
+
+      // Realisasi total
+      const realisasiList = await this.realisasiRepository.find({
+        where: allIds.map((id) => ({ indikatorId: id, tahun })),
+      });
+      const totalRealisasi = realisasiList.reduce((s, r) => s + Number(r.realisasiAngka), 0);
+
+      // Target
+      const uniTarget = await this.targetUniRepository.findOne({ where: { indikatorId: l0.id, tahun } });
+      const targetVal = uniTarget ? Number(uniTarget.persentase || 0) : 0;
+
+      // Biro PKU override
+      const biroPKU = await this.validasiBiroPKURepository.findOne({ where: { indikatorId: l0.id, tahun } });
+      const effectiveRealisasi = biroPKU?.jumlahValid ?? totalRealisasi;
+
+      const progress = targetVal > 0 ? Math.min(100, Math.round((effectiveRealisasi / targetVal) * 100)) : 0;
+      const selesai = targetVal > 0 && effectiveRealisasi >= targetVal;
+      const hasDisposisi = topDisposisi.length > 0 || realisasiList.length > 0;
+
+      if (!hasDisposisi) totalBelumDisposisi++;
+      else if (selesai) totalSelesai++;
+      else totalProses++;
+
+      if (targetVal > 0) {
+        totalCapaianSum += progress;
+        totalCapaianCount++;
+      }
+
+      // Chain: siapa saja yang menerima disposisi (top recipients)
+      const penerima = topDisposisi.map((d) => ({
+        userId: d.toUserId,
+        nama: (d.toUser as any)?.nama ?? `User ${d.toUserId}`,
+        jumlahTarget: Number(d.jumlahTarget),
+      }));
+
+      // Realisasi status breakdown
+      const statusCounts = { pending: 0, approved: 0, rejected: 0 };
+      for (const r of realisasiList) {
+        if (r.status === 'approved') statusCounts.approved++;
+        else if (r.status === 'rejected') statusCounts.rejected++;
+        else statusCounts.pending++;
+      }
+
+      items.push({
+        id: l0.id,
+        kode: l0.kode,
+        nama: l0.nama,
+        kategori: l0.kategori ?? null,
+        targetUniversitas: targetVal,
+        satuan: uniTarget?.satuan ?? null,
+        realisasi: effectiveRealisasi,
+        progress,
+        status: selesai ? 'selesai' : hasDisposisi ? 'proses' : 'belum_disposisi',
+        penerima,
+        realisasiStatus: statusCounts,
+      });
+    }
+
+    const persentaseCapaian = totalCapaianCount > 0
+      ? Math.round(totalCapaianSum / totalCapaianCount)
+      : 0;
+
+    return {
+      tahun,
+      jenis,
+      summary: {
+        totalIndikator: l0s.length,
+        belumDisposisi: totalBelumDisposisi,
+        proses: totalProses,
+        selesai: totalSelesai,
+        persentaseCapaian,
+      },
+      items,
+    };
   }
 }

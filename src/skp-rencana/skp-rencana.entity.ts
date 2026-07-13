@@ -49,6 +49,10 @@ export class SkpRencanaStatus {
   @Column({ name: 'signed_at_pihak_kedua', type: 'timestamp', nullable: true })
   signedAtPihakKedua: Date | null;
 
+  /** Berapa kali dokumen ini dikembalikan untuk revisi */
+  @Column({ name: 'revision_count', default: 0 })
+  revisionCount: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

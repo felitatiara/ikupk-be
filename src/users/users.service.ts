@@ -124,13 +124,10 @@ export class UsersService {
     // Assign atasan relations (atasanIds takes priority over atasanId)
     const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
     for (const pid of atasanIdList) {
-      await this.userRelationRepo
-        .createQueryBuilder()
-        .insert()
-        .into(UserRelation)
-        .values({ userId: savedUser.id, parentId: pid })
-        .orIgnore()
-        .execute();
+      const existing = await this.userRelationRepo.findOne({ where: { userId: savedUser.id, parentId: pid } });
+      if (!existing) {
+        await this.userRelationRepo.save(this.userRelationRepo.create({ userId: savedUser.id, parentId: pid }));
+      }
     }
 
     return (await this.findOne(savedUser.id))!;
@@ -203,22 +200,14 @@ export class UsersService {
 
     // Update atasan relations (atasanIds takes priority over atasanId)
     if (dto.atasanIds !== undefined || dto.atasanId !== undefined) {
-      await this.userRelationRepo
-        .createQueryBuilder()
-        .delete()
-        .from(UserRelation)
-        .where('"user_id" = :userId', { userId: id })
-        .execute();
+      await this.userRelationRepo.delete({ userId: id });
       const atasanIdList = dto.atasanIds?.length ? dto.atasanIds : (dto.atasanId ? [dto.atasanId] : []);
       console.log(`[users.service] update user ${id}: saving atasanIds=${JSON.stringify(atasanIdList)}`);
       for (const pid of atasanIdList) {
-        await this.userRelationRepo
-          .createQueryBuilder()
-          .insert()
-          .into(UserRelation)
-          .values({ userId: id, parentId: pid })
-          .orIgnore()
-          .execute();
+        const existing = await this.userRelationRepo.findOne({ where: { userId: id, parentId: pid } });
+        if (!existing) {
+          await this.userRelationRepo.save(this.userRelationRepo.create({ userId: id, parentId: pid }));
+        }
       }
     }
 

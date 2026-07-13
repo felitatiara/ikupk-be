@@ -158,6 +158,7 @@ export class RealisasiService {
             nama: r.indikator?.nama ?? '',
             jenis: r.indikator?.jenis ?? '',
             level: r.indikator?.level ?? 0,
+            sumberData: r.indikator?.sumberData ?? 'repository',
           },
           submissions: [],
         });
@@ -581,6 +582,7 @@ export class RealisasiService {
         indikatorId,
         kodeIndikator: indikator?.kode ?? '',
         namaIndikator: indikator?.nama ?? '',
+        sumberData: indikator?.sumberData ?? 'repository',
         targetBawahan,
         totalValidFiles: dosenList.reduce((s, d) => s + (d.validFileCount ?? 0), 0),
         dosenCount: dosenList.length,

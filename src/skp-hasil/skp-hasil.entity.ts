@@ -49,6 +49,10 @@ export class SkpHasilStatus {
   @Column({ name: 'signed_at_penilai', type: 'timestamp', nullable: true })
   signedAtPenilai: Date | null;
 
+  /** Berapa kali dokumen ini dikembalikan untuk revisi */
+  @Column({ name: 'revision_count', default: 0 })
+  revisionCount: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

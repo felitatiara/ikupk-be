@@ -1104,35 +1104,111 @@ export class IndikatorService {
         }
       }
 
-      // Also count files uploaded directly to realisasi_files (ikupk-type).
-      // This ensures the chart reflects uploaded files even before a formal
-      // realisasi record is submitted.
-      const uploadedFiles = await this.realisasiFileRepo.find({
-        where: { indikatorId: In(indikatorIds), createdBy: userId, tahun },
+      // Fetch sumberData per indikator so we route capaian accumulation correctly.
+      const indikatorMeta = await this.indikatorRepository.find({
+        where: { id: In(indikatorIds) },
+        select: ['id', 'sumberData'],
       });
-      const fileCountMap = new Map<number, number>();
-      for (const f of uploadedFiles) {
-        if (f.indikatorId === null) continue;
-        fileCountMap.set(f.indikatorId, (fileCountMap.get(f.indikatorId) ?? 0) + 1);
-      }
-      for (const [id, count] of fileCountMap) {
-        // Use the larger of: formal realisasi submission vs raw file count
-        realisasiMap.set(id, Math.max(realisasiMap.get(id) ?? 0, count));
+      const sumberDataById = new Map(indikatorMeta.map((m) => [m.id, m.sumberData]));
+      const ikupkIds = indikatorIds.filter((id) => sumberDataById.get(id) === 'ikupk');
+      const repositoryIds = indikatorIds.filter(
+        (id) => (sumberDataById.get(id) ?? 'repository') !== 'ikupk',
+      );
+
+      // ── ikupk-type indicators ────────────────────────────────────────────────
+      if (ikupkIds.length > 0) {
+        // Own IKU PK uploads: use Max with formal submission to avoid double-count.
+        const uploadedFiles = await this.realisasiFileRepo.find({
+          where: { indikatorId: In(ikupkIds), createdBy: userId, tahun },
+        });
+        const fileCountMap = new Map<number, number>();
+        for (const f of uploadedFiles) {
+          if (f.indikatorId === null) continue;
+          fileCountMap.set(f.indikatorId, (fileCountMap.get(f.indikatorId) ?? 0) + 1);
+        }
+        for (const [id, count] of fileCountMap) {
+          realisasiMap.set(id, Math.max(realisasiMap.get(id) ?? 0, count));
+        }
+
+        // Bawahan's IKU PK uploads (disposisi-chain only, excludes self).
+        const sentDisposisis = await this.disposisiRepo.find({
+          where: { fromUserId: userId, indikatorId: In(ikupkIds), tahun },
+        });
+        const bawahanUserIds = [...new Set(sentDisposisis.map((d) => d.toUserId))].filter(
+          (id) => id !== userId,
+        );
+        if (bawahanUserIds.length > 0) {
+          const bawahanFiles = await this.realisasiFileRepo.find({
+            where: { indikatorId: In(ikupkIds), createdBy: In(bawahanUserIds), tahun },
+          });
+          for (const f of bawahanFiles) {
+            if (f.indikatorId === null) continue;
+            realisasiMap.set(f.indikatorId, (realisasiMap.get(f.indikatorId) ?? 0) + 1);
+          }
+
+          // Also populate valid/finalValid maps from bawahan's validated realisasi.
+          const bawahanRealisasiIkupk = await this.realisasiRepo.find({
+            where: { indikatorId: In(ikupkIds), createdBy: In(bawahanUserIds), tahun },
+          });
+          for (const r of bawahanRealisasiIkupk) {
+            if (!r.indikatorId) continue;
+            if (r.validFileCount !== null) {
+              validRealisasiMap.set(
+                r.indikatorId,
+                (validRealisasiMap.get(r.indikatorId) ?? 0) + Number(r.validFileCount),
+              );
+            }
+            if (VALIDATED_STATUSES.includes(r.status)) {
+              const finalVal = r.validFileCount !== null
+                ? Number(r.validFileCount)
+                : Number(r.realisasiAngka);
+              finalValidRealisasiMap.set(
+                r.indikatorId,
+                (finalValidRealisasiMap.get(r.indikatorId) ?? 0) + finalVal,
+              );
+            }
+          }
+        }
       }
 
-      // Include bawahan's uploaded files (recipients of disposisi sent by current user)
-      // so monitoring capaian matches "Lihat Progress" which shows own + bawahan together.
-      const sentDisposisis = await this.disposisiRepo.find({
-        where: { fromUserId: userId, indikatorId: In(indikatorIds), tahun },
-      });
-      const bawahanUserIds = [...new Set(sentDisposisis.map((d) => d.toUserId))];
-      if (bawahanUserIds.length > 0) {
-        const bawahanFiles = await this.realisasiFileRepo.find({
-          where: { indikatorId: In(indikatorIds), createdBy: In(bawahanUserIds), tahun },
+      // ── repository-type indicators ───────────────────────────────────────────
+      // Accumulate bawahan's realisasi submissions so atasan's capaian correctly
+      // reflects delegated work. Without this, atasan capaian = 0 for repository
+      // indicators where all execution is delegated via disposisi.
+      // Only bawahan who received disposisi from this user are included.
+      if (repositoryIds.length > 0) {
+        const sentDisposisisRepo = await this.disposisiRepo.find({
+          where: { fromUserId: userId, indikatorId: In(repositoryIds), tahun },
         });
-        for (const f of bawahanFiles) {
-          if (f.indikatorId === null) continue;
-          realisasiMap.set(f.indikatorId, (realisasiMap.get(f.indikatorId) ?? 0) + 1);
+        const bawahanIdsRepo = [...new Set(sentDisposisisRepo.map((d) => d.toUserId))].filter(
+          (id) => id !== userId,
+        );
+        if (bawahanIdsRepo.length > 0) {
+          const bawahanRealisasiRepo = await this.realisasiRepo.find({
+            where: { indikatorId: In(repositoryIds), createdBy: In(bawahanIdsRepo), tahun },
+          });
+          for (const r of bawahanRealisasiRepo) {
+            if (!r.indikatorId) continue;
+            const count = r.validFileCount !== null
+              ? Number(r.validFileCount)
+              : Number(r.realisasiAngka);
+            realisasiMap.set(r.indikatorId, (realisasiMap.get(r.indikatorId) ?? 0) + count);
+            if (r.validFileCount !== null) {
+              validRealisasiMap.set(
+                r.indikatorId,
+                (validRealisasiMap.get(r.indikatorId) ?? 0) + Number(r.validFileCount),
+              );
+            }
+            if (VALIDATED_STATUSES.includes(r.status)) {
+              const finalVal = r.validFileCount !== null
+                ? Number(r.validFileCount)
+                : Number(r.realisasiAngka);
+              finalValidRealisasiMap.set(
+                r.indikatorId,
+                (finalValidRealisasiMap.get(r.indikatorId) ?? 0) + finalVal,
+              );
+            }
+          }
         }
       }
     }

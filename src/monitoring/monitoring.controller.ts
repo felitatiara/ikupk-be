@@ -72,4 +72,12 @@ export class MonitoringController {
   ) {
     return this.monitoringService.getScopeForUser(userId, tahun, jenis);
   }
+
+  @Get('dekan-dashboard')
+  async getDekanDashboard(
+    @Query('tahun') tahun: string,
+    @Query('jenis', new DefaultValuePipe('IKU')) jenis: string,
+  ) {
+    return this.monitoringService.getDekanDashboard(tahun, jenis);
+  }
 }

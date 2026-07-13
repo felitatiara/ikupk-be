@@ -9,6 +9,7 @@ import { RealisasiFile } from '../realisasi/realisasi-file.entity';
 import { Indikator } from '../indikator/indikator.entity';
 import { BaselineData } from '../baseline_data/baseline_data.entity';
 import { User } from '../users/user.entity';
+import { UserRole } from '../roles/user-role.entity';
 import { Disposisi } from '../disposisi/disposisi.entity';
 import { ValidasiBiroPKU } from './validasi-biro-pku.entity';
 
@@ -22,6 +23,7 @@ import { ValidasiBiroPKU } from './validasi-biro-pku.entity';
       Indikator,
       BaselineData,
       User,
+      UserRole,
       Disposisi,
       ValidasiBiroPKU,
     ]),

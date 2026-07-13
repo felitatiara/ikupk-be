@@ -1,13 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { SkpRencanaStatus } from './skp-rencana.entity';
+import { SkpRevisionLog } from './skp-revision-log.entity';
+import { Notification } from '../notifications/notification.entity';
 
 @Injectable()
 export class SkpRencanaService {
   constructor(
     @InjectRepository(SkpRencanaStatus)
     private readonly repo: Repository<SkpRencanaStatus>,
+    @InjectRepository(SkpRevisionLog)
+    private readonly revisionRepo: Repository<SkpRevisionLog>,
+    @InjectRepository(Notification)
+    private readonly notifRepo: Repository<Notification>,
   ) {}
 
   async getStatus(userId: number, tahun: string) {
@@ -107,5 +113,82 @@ export class SkpRencanaService {
     const map = new Map<number, string>();
     for (const r of records) map.set(r.userId, r.status);
     return map;
+  }
+
+  /** Kembalikan Rencana SKP untuk revisi — status → needs_revision */
+  async returnForRevision(
+    targetUserId: number,
+    tahun: string,
+    reason: string | null,
+    note: string | null,
+    revisedByUserId: number,
+  ) {
+    const existing = await this.repo.findOne({ where: { userId: targetUserId, tahun } });
+    const fromStatus = existing?.status ?? 'signed_pegawai';
+
+    if (existing) {
+      await this.repo.update(existing.id, {
+        status: 'needs_revision',
+        revisionCount: (existing.revisionCount ?? 0) + 1,
+      });
+    } else {
+      await this.repo.save(
+        this.repo.create({ userId: targetUserId, tahun, status: 'needs_revision' }),
+      );
+    }
+
+    await this.revisionRepo.save(
+      this.revisionRepo.create({
+        userId: targetUserId,
+        tahun,
+        docType: 'rencana',
+        fromStatus,
+        reason,
+        note,
+        revisedByUserId,
+        resubmittedAt: null,
+      }),
+    );
+
+    const reasonText = reason ? ` (${reason})` : '';
+    await this.notifRepo.save(
+      this.notifRepo.create({
+        userId: targetUserId,
+        message: `Rencana SKP Anda dikembalikan untuk revisi${reasonText}. Harap perbaiki dan ajukan kembali.`,
+        type: 'skp_revision_requested',
+        tahun,
+        isRead: false,
+      }),
+    );
+
+    return this.getStatus(targetUserId, tahun);
+  }
+
+  /** Pegawai mengajukan kembali setelah revisi — status kembali ke fromStatus */
+  async resubmitByPegawai(userId: number, tahun: string) {
+    const latestLog = await this.revisionRepo.findOne({
+      where: { userId, tahun, docType: 'rencana', resubmittedAt: IsNull() },
+      order: { revisedAt: 'DESC' },
+    });
+
+    const targetStatus = latestLog?.fromStatus ?? 'signed_pegawai';
+    const existing = await this.repo.findOne({ where: { userId, tahun } });
+    if (existing) {
+      await this.repo.update(existing.id, { status: targetStatus });
+    }
+
+    if (latestLog) {
+      await this.revisionRepo.update(latestLog.id, { resubmittedAt: new Date() });
+    }
+
+    return this.getStatus(userId, tahun);
+  }
+
+  /** Ambil semua log revisi untuk satu user (rencana SKP) */
+  async getRevisionLogs(userId: number, tahun: string): Promise<SkpRevisionLog[]> {
+    return this.revisionRepo.find({
+      where: { userId, tahun, docType: 'rencana' },
+      order: { revisedAt: 'DESC' },
+    });
   }
 }

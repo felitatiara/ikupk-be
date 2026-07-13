@@ -35,6 +35,7 @@ import { SkpPenilaiModule } from './skp-penilai/skp-penilai.module';
 import { SkpPenilaiConfig } from './skp-penilai/skp-penilai.entity';
 import { SkpRencanaModule } from './skp-rencana/skp-rencana.module';
 import { SkpRencanaStatus } from './skp-rencana/skp-rencana.entity';
+import { SkpRevisionLog } from './skp-rencana/skp-revision-log.entity';
 import { SkpHasilModule } from './skp-hasil/skp-hasil.module';
 import { SkpHasilStatus } from './skp-hasil/skp-hasil.entity';
 import { RoleViewPermission } from './roles/role-view-permission.entity';
@@ -70,6 +71,7 @@ import jwtConfig from './config/jwt.config';
           ValidasiBiroPKU,
           SkpPenilaiConfig,
           SkpRencanaStatus,
+          SkpRevisionLog,
           SkpHasilStatus,
           RoleViewPermission,
           RoleFeaturePermission,

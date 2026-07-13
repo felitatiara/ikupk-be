@@ -1,7 +1,10 @@
 import { Injectable, BadRequestException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Disposisi } from './disposisi.entity';
+import { UserRelation } from '../users/user_relation.entity';
+import { User } from '../users/user.entity';
+import { UserRole } from '../roles/user-role.entity';
 
 @Injectable()
 export class DisposisiService {
@@ -10,6 +13,12 @@ export class DisposisiService {
   constructor(
     @InjectRepository(Disposisi)
     private disposisiRepo: Repository<Disposisi>,
+    @InjectRepository(UserRelation)
+    private userRelationRepo: Repository<UserRelation>,
+    @InjectRepository(User)
+    private userRepo: Repository<User>,
+    @InjectRepository(UserRole)
+    private userRoleRepo: Repository<UserRole>,
   ) {}
 
   async findByIndikator(
@@ -142,5 +151,72 @@ export class DisposisiService {
 
   async remove(id: number): Promise<void> {
     await this.disposisiRepo.delete(id);
+  }
+
+  /**
+   * Kembalikan daftar bawahan langsung (berdasarkan UserRelation) beserta
+   * jumlah yang sudah mereka terima untuk indikator tertentu.
+   * Juga mengembalikan berapa yang diterima oleh fromUserId sendiri.
+   */
+  async getBawahanForDisposisi(fromUserId: number, indikatorId: number, tahun: string) {
+    // Gunakan QueryBuilder dengan explicit column name untuk menghindari
+    // potensi property-mapping issue pada TypeORM find()
+    const rels = await this.userRelationRepo
+      .createQueryBuilder('ur')
+      .where('ur.parent_id = :parentId', { parentId: fromUserId })
+      .getMany();
+
+    this.logger.debug(
+      `getBawahanForDisposisi: fromUserId=${fromUserId} → found ${rels.length} relations [${rels.map(r => r.userId).join(',')}]`,
+    );
+
+    const bawahanIds = rels.map((r) => r.userId);
+
+    if (bawahanIds.length === 0) {
+      const myReceived = await this.getReceivedJumlah(fromUserId, indikatorId, tahun);
+      return { myReceived, bawahan: [] };
+    }
+
+    const [users, userRoles] = await Promise.all([
+      this.userRepo.find({ where: { id: In(bawahanIds) } }),
+      this.userRoleRepo.find({
+        where: bawahanIds.map((id) => ({ userId: id, isPrimary: true })),
+        relations: ['role'],
+      }),
+    ]);
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const roleMap = new Map<number, string>();
+    for (const ur of userRoles) {
+      if (!roleMap.has(ur.userId)) roleMap.set(ur.userId, ur.role?.name ?? '');
+    }
+
+    const bawahan: { userId: number; nama: string; jabatan: string; receivedJumlah: number }[] = [];
+    for (const bawahanId of bawahanIds) {
+      const u = userMap.get(bawahanId);
+      if (!u) continue;
+      const receivedJumlah = await this.getReceivedJumlah(bawahanId, indikatorId, tahun);
+      bawahan.push({
+        userId: bawahanId,
+        nama: u.nama,
+        jabatan: roleMap.get(bawahanId) ?? '',
+        receivedJumlah,
+      });
+    }
+
+    const myReceived = await this.getReceivedJumlah(fromUserId, indikatorId, tahun);
+    return { myReceived, bawahan };
+  }
+
+  async debugRelationsFor(parentId: number) {
+    const rels = await this.userRelationRepo
+      .createQueryBuilder('ur')
+      .where('ur.parent_id = :parentId', { parentId })
+      .getMany();
+    return {
+      parentId,
+      count: rels.length,
+      children: rels.map((r) => ({ relationId: r.id, userId: r.userId, parentId: r.parentId })),
+    };
   }
 }

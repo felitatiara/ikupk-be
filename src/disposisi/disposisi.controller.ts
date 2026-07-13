@@ -38,6 +38,20 @@ export class DisposisiController {
     return this.disposisiService.findChain(parentId);
   }
 
+  @Get('bawahan')
+  getBawahan(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('indikatorId', ParseIntPipe) indikatorId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.disposisiService.getBawahanForDisposisi(userId, indikatorId, tahun);
+  }
+
+  @Get('debug-bawahan')
+  debugBawahan(@Query('userId', ParseIntPipe) userId: number) {
+    return this.disposisiService.debugRelationsFor(userId);
+  }
+
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   @Post()

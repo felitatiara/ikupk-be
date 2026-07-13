@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, ParseIntPipe, Request } from '@nestjs/common';
 import { SkpRencanaService } from './skp-rencana.service';
 
 @Controller('skp-rencana')
@@ -42,5 +42,37 @@ export class SkpRencanaController {
     @Body() body: { targetUserId: number; tahun: string; signature?: string | null },
   ) {
     return this.service.signByPihakKedua(body.targetUserId, body.tahun, body.signature ?? null);
+  }
+
+  /** Kembalikan Rencana SKP untuk revisi (oleh checker / pihak kedua) */
+  @Post('return-revision')
+  returnForRevision(
+    @Body() body: { targetUserId: number; tahun: string; reason?: string; note?: string },
+    @Request() req: any,
+  ) {
+    const revisedByUserId: number = req.user?.userId ?? req.user?.id ?? 0;
+    return this.service.returnForRevision(
+      body.targetUserId,
+      body.tahun,
+      body.reason ?? null,
+      body.note ?? null,
+      revisedByUserId,
+    );
+  }
+
+  /** Pegawai mengajukan kembali setelah melakukan revisi */
+  @Post('resubmit')
+  resubmit(@Body() body: { tahun: string }, @Request() req: any) {
+    const userId: number = req.user?.userId ?? req.user?.id ?? 0;
+    return this.service.resubmitByPegawai(userId, body.tahun);
+  }
+
+  /** Ambil riwayat revisi Rencana SKP untuk satu user */
+  @Get('revisions')
+  getRevisions(
+    @Query('userId', ParseIntPipe) userId: number,
+    @Query('tahun') tahun: string,
+  ) {
+    return this.service.getRevisionLogs(userId, tahun);
   }
 }
