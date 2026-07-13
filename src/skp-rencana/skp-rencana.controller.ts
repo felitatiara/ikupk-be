@@ -75,4 +75,18 @@ export class SkpRencanaController {
   ) {
     return this.service.getRevisionLogs(userId, tahun);
   }
+
+  /** Cek apakah ada target baru setelah pegawai menandatangani */
+  @Get('check-new-targets')
+  checkNewTargets(@Query('tahun') tahun: string, @Request() req: any) {
+    const userId: number = req.user?.userId ?? req.user?.id ?? 0;
+    return this.service.checkNewTargets(userId, tahun);
+  }
+
+  /** Pegawai reset TTD agar bisa tandatangani ulang dengan target baru */
+  @Post('reset-for-new-targets')
+  resetForNewTargets(@Body() body: { tahun: string }, @Request() req: any) {
+    const userId: number = req.user?.userId ?? req.user?.id ?? 0;
+    return this.service.resetForNewTargets(userId, body.tahun);
+  }
 }

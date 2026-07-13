@@ -5,9 +5,10 @@ import { SkpRevisionLog } from './skp-revision-log.entity';
 import { SkpRencanaService } from './skp-rencana.service';
 import { SkpRencanaController } from './skp-rencana.controller';
 import { Notification } from '../notifications/notification.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SkpRencanaStatus, SkpRevisionLog, Notification])],
+  imports: [TypeOrmModule.forFeature([SkpRencanaStatus, SkpRevisionLog, Notification, Disposisi])],
   providers: [SkpRencanaService],
   controllers: [SkpRencanaController],
   exports: [SkpRencanaService],

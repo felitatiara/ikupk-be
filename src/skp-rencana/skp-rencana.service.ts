@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, MoreThan, Repository } from 'typeorm';
 import { SkpRencanaStatus } from './skp-rencana.entity';
 import { SkpRevisionLog } from './skp-revision-log.entity';
 import { Notification } from '../notifications/notification.entity';
+import { Disposisi } from '../disposisi/disposisi.entity';
 
 @Injectable()
 export class SkpRencanaService {
@@ -14,6 +15,8 @@ export class SkpRencanaService {
     private readonly revisionRepo: Repository<SkpRevisionLog>,
     @InjectRepository(Notification)
     private readonly notifRepo: Repository<Notification>,
+    @InjectRepository(Disposisi)
+    private readonly disposisiRepo: Repository<Disposisi>,
   ) {}
 
   async getStatus(userId: number, tahun: string) {
@@ -190,5 +193,35 @@ export class SkpRencanaService {
       where: { userId, tahun, docType: 'rencana' },
       order: { revisedAt: 'DESC' },
     });
+  }
+
+  /** Cek apakah ada target baru (disposisi) yang masuk setelah pegawai menandatangani */
+  async checkNewTargets(userId: number, tahun: string): Promise<{ hasNewTargets: boolean; newCount: number }> {
+    const status = await this.repo.findOne({ where: { userId, tahun } });
+    if (!status?.signedAtPegawai) {
+      return { hasNewTargets: false, newCount: 0 };
+    }
+    const newCount = await this.disposisiRepo.count({
+      where: {
+        toUserId: userId,
+        tahun,
+        createdAt: MoreThan(status.signedAtPegawai),
+      },
+    });
+    return { hasNewTargets: newCount > 0, newCount };
+  }
+
+  /** Pegawai mengajukan revisi karena ada target baru — reset ke draft agar bisa TTD ulang */
+  async resetForNewTargets(userId: number, tahun: string) {
+    const existing = await this.repo.findOne({ where: { userId, tahun } });
+    if (!existing || existing.status !== 'signed_pegawai') {
+      return this.getStatus(userId, tahun);
+    }
+    await this.repo.update(existing.id, {
+      status: 'draft',
+      signaturePegawai: null,
+      signedAtPegawai: null,
+    });
+    return this.getStatus(userId, tahun);
   }
 }

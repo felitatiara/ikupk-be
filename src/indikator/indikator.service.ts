@@ -718,10 +718,22 @@ export class IndikatorService {
   ) {
     // Level role aktif user saat ini
     const currentUserRole = await this.userRoleRepo.findOne({
-      where: { roleId },
+      where: { userId, roleId },
       relations: ['role'],
     });
     const currentRoleLevel = currentUserRole?.role?.level ?? 4;
+
+    // Load semua role user untuk deteksi multi-role scenario.
+    // Digunakan untuk mencegah disposisi yang ditujukan ke role pimpinan
+    // tampil di workspace role yang lebih rendah (misal Kajur→Dosen).
+    const userAllRoles = await this.userRoleRepo.find({
+      where: { userId },
+      relations: ['role'],
+    });
+    // Role IDs yang levelnya lebih tinggi (angka lebih kecil) dari role aktif saat ini
+    const userHigherRoleIds = userAllRoles
+      .filter((ur) => (ur.role?.level ?? 99) < currentRoleLevel)
+      .map((ur) => ur.roleId);
 
     const disposisis = await this.disposisiRepo.find({
       where: { toUserId: userId, tahun },
@@ -923,13 +935,63 @@ export class IndikatorService {
     //   1. Override chain amounts dengan target personal (self-disposisi)
     //   2. Hapus indikator di mana user bertindak sebagai pimpinan (mendistribusikan ke orang lain)
     //      tapi tidak punya target personal — itu adalah penerimaan KaProdi, bukan penerimaan dosen.
+    //   3. (Multi-role) Hapus disposisi yang seharusnya ada di workspace pimpinan user ini,
+    //      yaitu indikator yang cascade chain-nya mencakup role pimpinan yang dimiliki user.
     if (cascadedL1Ids.size === 0) {
+      // ── Multi-role protection ──────────────────────────────────────────────
+      // Jika user punya role pimpinan (level lebih tinggi dari role saat ini),
+      // hapus disposisi untuk indikator yang cascade chain-nya mencakup role pimpinan tersebut.
+      // Contoh: Kajur+Dosen melihat workspace Dosen → hapus disposisi yang ditujukan ke Kajur.
+      // Pengecualian: tetap tampilkan jika ada self-disposisi personal untuk indikator itu.
+      if (userHigherRoleIds.length > 0) {
+        // Cari L1 indikator yang cascade chain-nya mengandung role pimpinan user
+        const pimpinanChainL1Ids = new Set<number>();
+        for (const ind of allInds) {
+          if (!ind.cascadeChain || ind.level !== 1) continue;
+          try {
+            const chain = JSON.parse(ind.cascadeChain) as unknown[];
+            if (userHigherRoleIds.some((rid) => isRoleInChain(chain, rid))) {
+              pimpinanChainL1Ids.add(ind.id);
+            }
+          } catch { /* skip malformed chain */ }
+        }
+
+        if (pimpinanChainL1Ids.size > 0) {
+          // Bangun peta child → L1 untuk identifikasi indikator mana yang termasuk chain pimpinan
+          type MrLeaf = { id: number; children?: Array<{ id: number }> };
+          type MrSub  = { id: number; children: MrLeaf[] };
+          type MrGroup = { id: number; subIndikators: MrSub[] };
+          const childToL1Multi = new Map<number, number>();
+          for (const group of fullGrouped as MrGroup[]) {
+            for (const sub of group.subIndikators) {
+              childToL1Multi.set(sub.id, sub.id);
+              for (const child of sub.children ?? []) {
+                childToL1Multi.set(child.id, sub.id);
+                for (const gc of child.children ?? []) {
+                  childToL1Multi.set(gc.id, sub.id);
+                }
+              }
+            }
+          }
+          const selfIndIds = new Set(selfDisposisis.map((d) => d.indikatorId));
+          for (const [indId] of disposisiByIndikator) {
+            if (selfIndIds.has(indId)) continue; // Jaga self-disposisi personal
+            const l1Id = childToL1Multi.get(indId);
+            if (l1Id !== undefined && pimpinanChainL1Ids.has(l1Id)) {
+              disposisiByIndikator.delete(indId);
+            }
+          }
+        }
+      }
+
       // Tambahkan / override dengan target personal dosen
       for (const d of selfDisposisis) {
         disposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
       }
-      // Hapus penerimaan chain KaProdi yang tidak punya target dosen personal
-      if (pimpinanIndikatorIds.size > 0) {
+      // Hapus penerimaan chain yang tidak punya target personal — hanya untuk dosen leaf (level >= 4).
+      // Kaprodi (level 3) yang menerima disposisi manual dan mendistribusikan ke bawahan
+      // tetap perlu melihat target yang mereka terima; filter ini tidak boleh menghapusnya.
+      if (pimpinanIndikatorIds.size > 0 && currentRoleLevel >= 4) {
         const selfIndIds = new Set(selfDisposisis.map((d) => d.indikatorId));
         for (const indId of pimpinanIndikatorIds) {
           if (!selfIndIds.has(indId)) {

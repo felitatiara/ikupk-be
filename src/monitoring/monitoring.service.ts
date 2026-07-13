@@ -122,14 +122,12 @@ export class MonitoringService {
    * PK: realisasi & target_unit dari level 3.
    */
   async getAggregatedProgress(tahun: string, jenis: string) {
-    // Tidak filter by tahun pada indikator — struktur indikator bisa berlaku lintas tahun.
-    // Filter tahun hanya diterapkan pada target_universitas dan realisasi.
     const level0Indikators = await this.indikatorRepository.find({
-      where: { level: 0, jenis },
+      where: { level: 0, jenis, tahun },
       order: { kode: 'ASC' },
     });
 
-    const allIndikators = await this.indikatorRepository.find();
+    const allIndikators = await this.indikatorRepository.find({ where: { tahun } });
     const results: any[] = [];
 
     // Build cross-reading maps: PK id -> linked IKU id; IKU id -> [linked PK ids]
@@ -644,7 +642,7 @@ export class MonitoringService {
    * Dekan mendapat seluruh L0 (monitoring penuh). User lain: berdasarkan cascadeChain / disposisi.
    */
   async getScopeForUser(userId: number, tahun: string, jenis: string): Promise<number[]> {
-    const l0s = await this.indikatorRepository.find({ where: { level: 0, jenis } });
+    const l0s = await this.indikatorRepository.find({ where: { level: 0, jenis, tahun } });
 
     // Dekan → akses penuh semua L0 (hanya monitoring, bukan tindakan)
     if (await this.isDekan(userId)) {
@@ -687,7 +685,7 @@ export class MonitoringService {
    */
   async getDekanDashboard(tahun: string, jenis: string) {
     const l0s = await this.indikatorRepository.find({
-      where: { level: 0, jenis },
+      where: { level: 0, jenis, tahun },
       order: { kode: 'ASC' },
     });
 
