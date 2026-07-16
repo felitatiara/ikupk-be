@@ -21,6 +21,16 @@ export class IntegrationController {
   }
 
   /**
+   * GET /integration/jenis-folder?jenis=IKU
+   * Link folder root jenis ("Indikator Kinerja Utama" / "Perjanjian Kinerja") dari repository.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('jenis-folder')
+  getJenisFolder(@Query('jenis') jenis: string) {
+    return this.integrationService.getJenisFolderLink(jenis);
+  }
+
+  /**
    * GET /integration/all-realisasi-files?indikatorId=15
    * Semua file untuk indikator (atasan/admin) — email dari JWT.
    */

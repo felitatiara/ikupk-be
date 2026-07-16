@@ -298,15 +298,15 @@ export class SkpPenilaiService {
       b.hasilStatus = hasilStatusMap.get(b.userId) ?? 'pending';
     }
 
-    // Hasil SKP Checker: bawahan yang sudah submit (signed_pegawai) dan user ini adalah checker-nya
+    // Hasil SKP Checker: semua bawahan yang sudah submit (non-pending) — untuk riwayat
     const hasilCheckerBawahan = checkerCandidates
-      .filter((c) => (hasilStatusMap.get(c.userId) ?? 'pending') === 'signed_pegawai')
-      .map((c) => ({ ...c, hasilStatus: 'signed_pegawai' as const }));
+      .map((c) => ({ ...c, hasilStatus: hasilStatusMap.get(c.userId) ?? 'pending' }))
+      .filter((c) => c.hasilStatus !== 'pending');
 
-    // Pejabat Penilai: bawahan yang sudah dicek checker (checked) dan user ini adalah penilai-nya
+    // Pejabat Penilai: semua bawahan yang sudah submit (non-pending) — untuk riwayat
     const hasilPenilaiDapatTTD = ekpCandidates
-      .filter((c) => (hasilStatusMap.get(c.userId) ?? 'pending') === 'checked')
-      .map((c) => ({ ...c, hasilStatus: 'checked' as const }));
+      .map((c) => ({ ...c, hasilStatus: hasilStatusMap.get(c.userId) ?? 'pending' }))
+      .filter((c) => c.hasilStatus !== 'pending');
 
     return { checkerBawahan, rencanaSKPBawahan, ekpBawahan, hasilCheckerBawahan, hasilPenilaiDapatTTD };
   }

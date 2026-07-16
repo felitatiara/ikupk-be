@@ -792,6 +792,12 @@ export class IndikatorService {
     // sekarang karena akan menimpa jumlah chain yang diterima dari atasan (KaJur→KaProdi).
     const selfDisposisis = disposisis.filter((d) => d.fromUserId === userId);
 
+    // Self-disposisi per indikator (untuk konteks pelaksana)
+    const selfDisposisiByIndikator = new Map<number, number>();
+    for (const d of selfDisposisis) {
+      selfDisposisiByIndikator.set(d.indikatorId, Number(d.jumlahTarget));
+    }
+
     // Indikator di mana user mendistribusikan FROM dirinya sendiri ke user LAIN (sebagai pimpinan).
     // Digunakan di post-filter dosen untuk memisahkan penerimaan KaProdi dari penerimaan dosen leaf.
     const distributedByUser = await this.disposisiRepo.find({
@@ -1005,6 +1011,14 @@ export class IndikatorService {
     const resolveDisposisi = (id: number): number | null =>
       cascadeFallbackIds.has(id) ? null : (disposisiByIndikator.get(id) ?? null);
 
+    // Helper: returns self-disposisi amount (user disposisi ke diri sendiri untuk aksi pelaksana)
+    const resolveSelfDisposisi = (id: number): number | null =>
+      selfDisposisiByIndikator.get(id) ?? null;
+
+    // Helper: returns level pengirim disposisi untuk indikator ini
+    const resolveFromLevel = (id: number): number | null =>
+      senderLevelByIndikator.has(id) ? (senderLevelByIndikator.get(id) ?? null) : null;
+
     if (disposisiByIndikator.size === 0) return [];
 
     // Build indikatorId → L0 group id map for fromUser resolution
@@ -1065,16 +1079,22 @@ export class IndikatorService {
               .map((gc: any) => ({
                 ...gc,
                 disposisiJumlah: resolveDisposisi(gc.id),
+                selfDisposisiJumlah: resolveSelfDisposisi(gc.id),
+                disposisiFromLevel: resolveFromLevel(gc.id),
               }));
 
             if (isChildAssigned) {
               const enrichedGrandchildren = (c.children ?? []).map((gc: any) => ({
                 ...gc,
                 disposisiJumlah: resolveDisposisi(gc.id),
+                selfDisposisiJumlah: resolveSelfDisposisi(gc.id),
+                disposisiFromLevel: resolveFromLevel(gc.id),
               }));
               return {
                 ...c,
                 disposisiJumlah: resolveDisposisi(c.id),
+                selfDisposisiJumlah: resolveSelfDisposisi(c.id),
+                disposisiFromLevel: resolveFromLevel(c.id),
                 children: enrichedGrandchildren,
               };
             } else if (filteredGrandchildren.length > 0) {
@@ -1089,14 +1109,20 @@ export class IndikatorService {
           const enrichedChildren = (sub.children ?? []).map((c: any) => ({
             ...c,
             disposisiJumlah: resolveDisposisi(c.id),
+            selfDisposisiJumlah: resolveSelfDisposisi(c.id),
+            disposisiFromLevel: resolveFromLevel(c.id),
             children: (c.children ?? []).map((gc: any) => ({
               ...gc,
               disposisiJumlah: resolveDisposisi(gc.id),
+              selfDisposisiJumlah: resolveSelfDisposisi(gc.id),
+              disposisiFromLevel: resolveFromLevel(gc.id),
             })),
           }));
           filteredSubs.push({
             ...sub,
             disposisiJumlah: resolveDisposisi(sub.id),
+            selfDisposisiJumlah: resolveSelfDisposisi(sub.id),
+            disposisiFromLevel: resolveFromLevel(sub.id),
             children: enrichedChildren,
           });
         } else if (filteredChildren.length > 0) {

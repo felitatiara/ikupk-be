@@ -131,6 +131,36 @@ export class IntegrationService {
   }
 
   /**
+   * Cari link folder root jenis (mis. "Indikator Kinerja Utama" / "Perjanjian Kinerja")
+   * dari daftar folder milik user di repository.
+   */
+  async getJenisFolderLink(
+    jenis: string,
+  ): Promise<{ folderLink: string | null }> {
+    try {
+      const jenisLabel = this.jenisLabelMap[jenis?.toUpperCase()] ?? jenis ?? '';
+      const secret = this.configService.get<string>('INTEGRATION_SECRET') ?? '';
+      const folders = await this.get<Array<{ id: string; name: string }>>(
+        `/api/integration/folders/by-name?name=${encodeURIComponent(jenisLabel)}`,
+        { 'x-integration-secret': secret },
+      );
+      const repoFeUrl =
+        this.configService.get<string>('REPOSITORY_FE_URL') ??
+        'http://localhost:3000';
+      const match = folders.find((f) =>
+        (f.name ?? '').toLowerCase() === jenisLabel.toLowerCase(),
+      ) ?? folders[0];
+      return {
+        folderLink: match
+          ? `${repoFeUrl}/dashboard?folderId=${match.id}`
+          : null,
+      };
+    } catch {
+      return { folderLink: null };
+    }
+  }
+
+  /**
    * Ambil file dari sub-folder langsung (level-2) di bawah parentFolderId.
    */
   async getFilesInChildren(parentFolderId: string, email: string): Promise<any[]> {
